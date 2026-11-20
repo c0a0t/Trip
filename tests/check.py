@@ -39,15 +39,14 @@ def marker_xy(page, p):
         const r=document.getElementById('map').getBoundingClientRect(); const ll=P_.m.getLatLng(); const pt=m.latLngToContainerPoint(ll);
         return {x:r.left+pt.x, y:r.top+pt.y} }""", p)
 
-def popup_inside(page):
-    """弹窗在地图范围内，并且弹窗标题没有被图例等浮层盖住"""
-    return page.evaluate("""() => { const p=document.querySelector('.leaflet-popup'); if(!p) return null;
-        const a=p.getBoundingClientRect(), b=document.getElementById('mapwrap').getBoundingClientRect();
-        const h=p.querySelector('h4').getBoundingClientRect();
-        const covered=[[h.left+6,h.top+3],[h.left+h.width/2,h.top+3],[h.left+6,h.top+h.height/2],[h.right-6,h.top+h.height/2]]
-          .some(([x,y])=>{const e=document.elementFromPoint(x,y);return !(e && p.contains(e))});
-        return {inside: !covered && a.left>=b.left-1 && a.right<=b.right+1 && a.top>=b.top-1 && a.bottom<=b.bottom+1, covered,
-                text: p.innerText.slice(0,80), a:[a.left,a.top,a.right,a.bottom].map(Math.round), b:[b.left,b.top,b.right,b.bottom].map(Math.round)} }""")
+def sel_state(page):
+    """当前选中状态：选中的地点、地图上高亮的路段、行程里标出的行、标记是否在地图可见范围内、是否出现了气泡（应为没有）"""
+    return page.evaluate("""() => { const a=__app, m=a.map, sel=a.state.sel;
+        const on=a.legLines.filter(o=>o.line.options.opacity>=.99&&a.legLines.some(q=>q.line.options.opacity<.5)).map(o=>`${o.lg.from}>${o.lg.to}`);
+        let visible=null; if(sel){const p=m.latLngToContainerPoint(P[sel].ll),s=m.getSize(); visible=p.x>=0&&p.y>=0&&p.x<=s.x&&p.y<=s.y}
+        return {sel, on, rows:[...document.querySelectorAll('#content .sel')].map(e=>e.innerText.split(String.fromCharCode(10))[0].slice(0,24)),
+                stops:[...document.querySelectorAll('#content .stop.sel')].map(e=>e.dataset.p),
+                visible, popup: !!document.querySelector('.leaflet-popup')} }""")
 
 def common_checks(page, tag):
     # 每天：路线全部来自 routes.json、图例、导航链接、Google 分段链接
@@ -94,38 +93,49 @@ def desktop(pw):
     page.click("nav.tabs .tab:nth-child(3)"); wait_idle(page, 1200)
     check("[桌面] 点日期标签切到 11/25", page.evaluate("__app.state.day") == "day2" and "11/25" in page.inner_text(".dayhead"))
     page.screenshot(path=str(OUT / "desktop-day2.png"))
+    # “在 Google 地图看真实路线”默认收起，点一下展开
+    page.evaluate("__app.go('day2')"); wait_idle(page, 600)
+    closed = page.evaluate("!document.querySelector('details.gm').open")
+    page.click("details.gm summary"); page.wait_for_timeout(200)
+    opened = page.evaluate("document.querySelector('details.gm').open") and page.locator(".gmrow").first.is_visible()
+    check("[桌面] Google 路线列表默认收起，点开可见", closed and opened)
     # 步行时间按 4 km/h 和真实路线长度重算（鱼市场→Broadway 1434 m ≈ 22 分钟；Argyle 上坡 518 m ×1.25 ≈ 10 分钟）
     page.evaluate("__app.go('day1')"); wait_idle(page, 600)
     t1 = page.inner_text("#content")
     page.evaluate("__app.go('day2')"); wait_idle(page, 600)
     t2 = page.inner_text("#content")
     check("[桌面] 步行时间按 4 km/h 重算", "约 22 分钟 · 1.4 km" in t1 and "约 10 分钟 · 520 m · 上坡" in t2 and "约 12 分钟 · 850 m" not in t1)
-    # 时间线点地点 → 地图定位 + 弹窗
-    page.click(".stop[data-p='bstairs']"); page.wait_for_timeout(1300)
-    pi = popup_inside(page)
-    check("[桌面] 时间线点地点：弹窗出现且在地图内", pi and pi["inside"] and "Bridge Stairs" in pi["text"], str(pi))
-    page.screenshot(path=str(OUT / "desktop-stop-popup.png"))
+    # 时间线点地点 → 地图平移过去并高亮，不弹气泡
+    page.click(".stop[data-p='bstairs'] h3"); page.wait_for_timeout(1300)
+    st = sel_state(page)
+    check("[桌面] 时间线点地点：地图平移到该点并高亮去它的路段，无气泡", st["sel"] == "bstairs" and st["visible"] and st["on"] == ["obs>bstairs"] and not st["popup"], str(st))
+    page.screenshot(path=str(OUT / "desktop-stop-selected.png"))
+    check("[桌面] 每个地点一行里有 Google 地图链接", page.locator(".stop[data-p='bstairs'] a.nav").first.get_attribute("href").startswith("https://www.google.com/maps/search/"))
     # 地图上点标记
     page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
     xy = marker_xy(page, "obs")
     page.mouse.click(xy["x"], xy["y"]); page.wait_for_timeout(1300)
-    check("[桌面] 地图上点标记 → 选中并弹窗", page.evaluate("__app.state.sel") == "obs" and "天文台" in (popup_inside(page) or {}).get("text", ""),
-          page.evaluate("__app.state.sel"))
+    st = sel_state(page)
+    check("[桌面] 地图上点标记 → 选中、行程标出这一站，无气泡", st["sel"] == "obs" and st["stops"] == ["obs"] and not st["popup"], str(st))
+    mb = page.locator("#map").bounding_box()
+    page.mouse.click(mb["x"] + 18, mb["y"] + mb["height"] * 0.55); page.wait_for_timeout(500)  # 地图左边缘，当天没有路线经过
+    st = sel_state(page)
+    check("[桌面] 点地图空白处 → 取消高亮", st["sel"] is None and not st["rows"] and not st["on"], str(st))
     # 点路段（时间线）→ 显示交通方式
     page.evaluate("__app.go('day2')"); wait_idle(page, 1000)
     z0 = page.evaluate("__app.map.getZoom()")
     page.click(".leg:has-text('渡轮') .mode"); page.wait_for_timeout(1400)
-    pi = popup_inside(page); z1 = page.evaluate("__app.map.getZoom()")
-    check("[桌面] 时间线点路段 → 平移到该段（不放大）并弹出交通方式", pi and "渡轮" in pi["text"] and pi["inside"] and z1 <= z0 + 1e-6, f"zoom {z0}->{z1} {pi}")
-    page.screenshot(path=str(OUT / "desktop-leg-popup.png"))
+    st = sel_state(page); z1 = page.evaluate("__app.map.getZoom()")
+    check("[桌面] 时间线点路段 → 平移到该段（不放大）并高亮，无气泡", st["on"] == ["mpwharf>cq"] and z1 <= z0 + 1e-6 and not st["popup"], f"zoom {z0}->{z1} {st}")
+    page.screenshot(path=str(OUT / "desktop-leg-selected.png"))
     # 地图上点路段
     page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
     mid = page.evaluate("""() => { const x=__app.legLines.find(o=>o.lg.mode==='train'); const m=__app.map;
         const ll=x.ll[Math.floor(x.ll.length/2)]; const pt=m.latLngToContainerPoint(ll); const r=document.getElementById('map').getBoundingClientRect();
         return {x:r.left+pt.x, y:r.top+pt.y} }""")
     page.mouse.click(mid["x"], mid["y"]); page.wait_for_timeout(700)
-    pi = popup_inside(page)
-    check("[桌面] 地图上点路段 → 显示交通方式", pi and "火车" in pi["text"], str(pi))
+    st = sel_state(page)
+    check("[桌面] 地图上点路段 → 高亮并在行程里标出这一段", st["on"] == ["stjames>cqstn"] and any("火车" in r for r in st["rows"]) and not st["popup"], str(st))
     # 大桥那段确实在桥东侧人行道（Cahill Walk）
     r = page.evaluate("__app.ROUTES['walk:bstairs>milsonpark']")
     check("[桌面] 25 号 Bridge Stairs→McDougall St 走海港大桥东侧人行道", "Cahill Walk" in r.get("names", []), ",".join(r.get("names", [])))
@@ -212,19 +222,20 @@ def mobile(pw, key):
     page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
     for tgt, other, frac in (("stmary", "hpb", 0.62), ("hpb", "stmary", 0.38)):
         # 从地图选中地点后页面会平滑滚到时间线对应条目，所以每次都重新定位、等滚动停下再算坐标
-        page.evaluate("__app.map.closePopup(); __app.state.sel=null; __app.map.setView([-33.8705,151.2128],15,{animate:false})")
+        page.evaluate("__app.state.sel=null; __app.map.setView([-33.8705,151.2128],15,{animate:false})")
         page.wait_for_timeout(900)
         a, b = marker_xy(page, "hpb"), marker_xy(page, "stmary")
         d = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
         tx, ty = a["x"] + (b["x"] - a["x"]) * frac, a["y"] + (b["y"] - a["y"]) * frac
         page.touchscreen.tap(tx, ty); page.wait_for_timeout(1300)
         check(f"[{tag}] 两个标记相距 {d:.0f}px，点偏向 {tgt} 的位置 → 选中 {tgt}", page.evaluate("__app.state.sel") == tgt, page.evaluate("__app.state.sel"))
-    # 弹窗不超出地图（地图边缘的点也测）
+    # 从行程选中地图边缘外的点：地图平移过去，点在可见范围内，不出气泡
+    page.evaluate("__app.map.setView([-33.8705,151.2128],15,{animate:false})"); page.wait_for_timeout(400)
     for p in ("mpwharf", "soh", "home", "milsonpark"):
-        page.evaluate(f"__app.selectStop('day2','{p}',false)"); page.wait_for_timeout(1500)
-        pi = popup_inside(page)
-        check(f"[{tag}] {p} 弹窗在地图范围内", pi and pi["inside"], str(pi))
-    shot("popup")
+        page.evaluate(f"__app.selectStop('day2','{p}',false)"); page.wait_for_timeout(1000)
+        st = sel_state(page)
+        check(f"[{tag}] 选中 {p} → 平移到可见范围，无气泡", st["sel"] == p and st["visible"] and not st["popup"], str(st))
+    shot("selected-edge")
     # 时间线点地点（手机）：只平移不缩放；高亮这个点和去它的路段；之后能自由拖走地图
     page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
     page.evaluate("__app.map.setZoom(14,{animate:false})"); page.wait_for_timeout(500)
@@ -232,8 +243,9 @@ def mobile(pw, key):
     z0 = page.evaluate("__app.map.getZoom()")
     page.locator(".stop[data-p='westfield']").tap(); page.wait_for_timeout(1400)
     z1 = page.evaluate("__app.map.getZoom()")
-    check(f"[{tag}] 时间线点地点 → 平移过去、缩放不变、弹窗", page.evaluate("__app.state.sel") == "westfield" and popup_inside(page) is not None and abs(z1 - z0) < 1e-6,
-          f"zoom {z0}->{z1}")
+    st = sel_state(page)
+    check(f"[{tag}] 时间线点地点 → 平移过去、缩放不变、无气泡", st["sel"] == "westfield" and st["visible"] and not st["popup"] and abs(z1 - z0) < 1e-6,
+          f"zoom {z0}->{z1} {st}")
     hl = page.evaluate("""() => __app.legLines.map(o => ({k:`${o.lg.from}>${o.lg.to}`, op:o.line.options.opacity}))""")
     on = [x["k"] for x in hl if x["op"] >= 0.99]; off = [x for x in hl if x["op"] < 0.5]
     check(f"[{tag}] 高亮去这个地点的路段（其余变淡）", on == ["hydepark>westfield"] and len(off) == len(hl) - 1, f"高亮 {on}")
@@ -241,14 +253,13 @@ def mobile(pw, key):
     check(f"[{tag}] 时间线里对应路段同时标出", bool(sel_ok))
     shot("stop-selected")
     # 选中后拖走地图，不应被拉回到选中的地点
-    box = page.locator("#map").bounding_box(); cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] * 0.85  # 从弹窗下方开始拖
+    box = page.locator("#map").bounding_box(); cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] * 0.7
     p0 = page.evaluate("(()=>{const p=__app.map.latLngToContainerPoint(P.westfield.ll);return [p.x,p.y]})()")
     fingers.start([(cx, cy)])
     for i in range(1, 13): fingers.move([(cx - 12 * i, cy - 4 * i)]); page.wait_for_timeout(16)
     fingers.end(); page.wait_for_timeout(1200)
     p1 = page.evaluate("(()=>{const p=__app.map.latLngToContainerPoint(P.westfield.ll);return [p.x,p.y]})()")
     check(f"[{tag}] 选中后可以自由拖动地图（不会弹回）", p1[0] < p0[0] - 100, f"标记 x {p0[0]:.0f} -> {p1[0]:.0f}")
-    page.evaluate("__app.map.closePopup()")
     # 地图和行程之间的拖动条
     page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(300)
     def handle_y(): b = page.locator("#resizer").bounding_box(); return b["x"] + b["width"] / 2, b["y"] + b["height"] / 2
@@ -282,8 +293,8 @@ def mobile(pw, key):
         const ll=x.ll[Math.floor(x.ll.length*0.4)]; const pt=m.latLngToContainerPoint(ll); const r=document.getElementById('map').getBoundingClientRect();
         return {x:r.left+pt.x, y:r.top+pt.y} }""")
     page.touchscreen.tap(mid["x"], mid["y"]); page.wait_for_timeout(900)
-    pi = popup_inside(page)
-    check(f"[{tag}] 点地图上的路段 → 显示交通方式", pi and "渡轮" in pi["text"] and pi["inside"], str(pi))
+    st = sel_state(page)
+    check(f"[{tag}] 点地图上的路段 → 高亮并在行程里标出，无气泡", st["on"] == ["cq>zoowharf"] and any("渡轮" in r for r in st["rows"]) and not st["popup"], str(st))
     shot("day3-ferry")
     common_checks(page, tag)
     page.evaluate("__app.go(null)"); wait_idle(page, 1000)

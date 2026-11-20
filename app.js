@@ -179,8 +179,8 @@ map.on("click",e=>{
   const mk=nearestMarker(cp,coarse?28:20)||(oe&&labelAt(oe.clientX,oe.clientY));
   if(mk){selectStop(mk.d,mk.p,true);return}
   const lg=nearestLeg(cp,coarse?14:9);
-  if(lg){openLegPop(lg,e.latlng);return}
-  map.closePopup();
+  if(lg){selectLeg(lg,true);return}
+  clearSel(); // 点地图空白处：取消高亮
 });
 const tip=document.getElementById("tip");
 function showTip(cp,t){tip.textContent=t;tip.style.display="block";
@@ -195,33 +195,30 @@ map.on("mousemove",e=>{if(coarse)return;cancelAnimationFrame(hoverRaf);hoverRaf=
   mapEl.style.cursor="";hideTip()})});
 map.on("mouseout dragstart zoomstart",hideTip);
 
-/* ---------- 弹窗（autoPan + 宽度随地图，保证不超出地图） ---------- */
-// 弹窗：窄一点、字小一点、半透明（样式见 app.css .pp）；只在打开时自动挪一次，之后可以自由拖走地图
-function popOpts(offY){const w=mapwrap.clientWidth;return{maxWidth:Math.max(140,Math.min(isNarrow()?200:240,w-70)),minWidth:Math.min(120,w-90),
-  autoPan:true,keepInView:false,offset:L.point(0,offY??4),
-  autoPanPaddingTopLeft:L.point(8,isNarrow()?10:56),autoPanPaddingBottomRight:L.point(8,16),closeButton:true,className:"pp"}}
-function openStopPop(d,p){
-  const pl=P[p];const items=visibleItems(d).filter(i=>!i.leg&&i.p===p);const it=items[0];
-  const times=items.map(i=>i.t).join(" / ");
-  const head=pl.sub?`<div class="d">属于「${shortN(pl.sub)}」这一站（跟团）</div>`:(it&&it.h&&it.h!==pl.n?`<div class="d">${it.h}</div>`:"");
-  const html=`<h4>${pl.n}</h4><div class="t">${d.date} ${d.wk}${times?" · "+times:""}</div>${head}<div class="acts"><a href="${gmPlace(pl)}" target="_blank" rel="noopener">Google 地图 ↗</a></div>`;
-  L.popup(popOpts(-8)).setLatLng(pl.ll).setContent(html).openOn(map); // 上移一点，尖角落在标记上方，不压住标记
-}
-function openLegPop(x,at){
-  const lg=x.lg,m=MODES[lg.mode],info=legInfo(lg);
-  const km=info&&info.dist&&info.kind!=="schematic"&&!lg.durOrig?`<span class="t">路线约 ${fmtDist(info.dist)}</span>`:"";
-  const html=`<h4>${m.ic} ${m.n} · ${lg.dur}</h4><div class="d">${shortN(lg.from)} → ${shortN(lg.to)}</div>${lg.note?`<div class="t">${lg.note}</div>`:""}${info&&info.kind==="schematic"?`<div class="t">园内路线为示意</div>`:""}<div class="acts">${km}${NO_NAV.has(lg.to)?"":`<a href="${gmDir(lg.from,lg.to,lg.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}</div>`;
-  highlightLeg(x);
-  L.popup(popOpts()).setLatLng(at||midpoint(x.ll)).setContent(html).openOn(map);
-}
-let hlTimer=0;
+/* ---------- 选中：不弹气泡（内容在下面的行程里都有），只高亮地图上的点/路线和行程里对应那一行 ---------- */
 function highlightLeg(x){
   legLines.forEach(o=>legOpacity(o,o===x));
-  x.halo.bringToFront();x.casing.bringToFront();x.line.bringToFront();clearTimeout(hlTimer);
+  x.halo.bringToFront();x.casing.bringToFront();x.line.bringToFront();
 }
-map.on("popupopen",()=>mapwrap.classList.add("popopen"));
-map.on("popupclose",()=>{mapwrap.classList.remove("popopen");legLines.forEach(o=>legOpacity(o));
-  document.querySelectorAll(".leg.sel").forEach(e=>e.classList.remove("sel"))});
+function clearSel(){
+  state.sel=null;applySel();
+  legLines.forEach(o=>legOpacity(o));
+  content.querySelectorAll(".leg.sel,.stop.sel").forEach(e=>e.classList.remove("sel"));
+}
+// 把行程里对应的那一行滚到地图下方可见处
+function revealRow(li){
+  if(!li)return;
+  if(!isNarrow()){li.scrollIntoView({block:"center",behavior:"smooth"});return}
+  const r=li.getBoundingClientRect(),top=tabs.offsetHeight+mapwrap.offsetHeight;
+  if(r.top>=top+4&&r.bottom<=window.innerHeight-8)return; // 已经看得到就不滚
+  window.scrollTo({top:r.top+window.scrollY-(top+10),behavior:"smooth"});
+}
+// 选中一段路线：高亮它；从地图上点的，行程里滚到那一段
+function selectLeg(x,fromMap){
+  clearSel();highlightLeg(x);
+  const li=content.querySelector(`.leg[data-i="${visibleItems(x.d).indexOf(x.lg)}"]`);
+  if(li){li.classList.add("sel");if(fromMap)revealRow(li)}
+}
 const fmtDist=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+" km":Math.round(m/10)*10+" m";
 
 /* ---------- 视野 ---------- */
@@ -250,7 +247,6 @@ function flyPoint(ll,z){
   try{map.flyTo(ll,z,{duration:.5})}catch(e){map.setView(ll,z,{animate:false})}
 }
 function fitDay(){
-  map.closePopup();
   if(!state.day){ // 总览：市区（蓝山团车线往西出画）
     const all=[];DAYS.forEach(d=>stopsOf(d).forEach(s=>{if(s.p!=="bluemtn")all.push(P[s.p].ll)}));all.push(P.airport.ll);
     fitLL(all,{maxZoom:14});return}
@@ -313,7 +309,7 @@ function gmSegments(d){
 }
 function gmBlock(d){
   const segs=gmSegments(d);
-  let h=`<details class="gm" open><summary>🗺️ 在 Google 地图看真实路线 <span>可导航 · 实时班次 · ${segs.length} 段</span></summary><div class="gmlist">`;
+  let h=`<details class="gm"><summary>🗺️ 在 Google 地图看真实路线 <span>可导航 · 实时班次 · ${segs.length} 段</span></summary><div class="gmlist">`;
   segs.forEach(sg=>{const m=MODES[sg.mode];
     const label=sg.stops.map(shortN).join(" → ");
     const tag=sg.mode==="coach"?"团车路线参考":sg.mode==="walk"?(sg.stops.length>2?"步行全程":"步行"):m.n;
@@ -340,7 +336,7 @@ function renderLegend(){
   lg.innerHTML=Object.entries(MODES).filter(([k])=>used.has(k)).map(([k,m])=>`<span>${sw(m,k)}${m.n}</span>`).join("");
 }
 function go(id,push=true,keepView=false){
-  state.day=id;state.sel=null;map.closePopup();renderTabs();renderContent();render();renderLegend();if(!keepView)fitDay();
+  state.day=id;state.sel=null;renderTabs();renderContent();render();renderLegend();if(!keepView)fitDay();
   if(push){try{history.replaceState(null,"",id?"#"+id:"#overview")}catch(e){}}
   content.scrollTop=0;if(isNarrow())window.scrollTo({top:0});
 }
@@ -359,29 +355,25 @@ function renderContent(){
       h+=`<li class="leg" data-i="${idx}"><div></div><div class="rail"><i style="border-left-color:${m.c};border-left-style:${it.mode==="walk"?"dotted":"solid"}"></i></div><div class="body"><span class="mode">${m.ic} ${m.n}</span><span>${it.dur}</span>${it.note?`<span>· ${it.note}</span>`:""}${km}${NO_NAV.has(it.to)?"":`<a class="nav" href="${gmDir(it.from,it.to,it.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}${it.alt?`<span class="alt">替代：${it.alt}</span>`:""}</div></li>`;
     }else{const pl=P[it.p];
       const badge=pl.home?`<span class="badge" style="background:#1F2328">家</span>`:`<span class="badge" style="background:${it.extra?"#9AA0A6":d.color}">${num[it.p]}</span>`;
-      h+=`<li class="stop" data-p="${it.p}" data-i="${idx}"><div class="time">${it.t}</div>${badge}<div><h3>${it.h}${it.opt?'<span class="opt">可选</span>':""}</h3><div style="font-size:12px;color:#6B6F76">${pl.n}</div>${it.d?`<p>${it.d}</p>`:""}${it.tip?`<span class="tipline">${it.tip}</span>`:""}</div></li>`;
+      h+=`<li class="stop" data-p="${it.p}" data-i="${idx}"><div class="time">${it.t}</div>${badge}<div><h3>${it.h}${it.opt?'<span class="opt">可选</span>':""}</h3><div style="font-size:12px;color:#6B6F76">${pl.n}</div>${it.d?`<p>${it.d}</p>`:""}${it.tip?`<span class="tipline">${it.tip}</span>`:""}<div class="acts"><a class="nav" href="${gmPlace(pl)}" target="_blank" rel="noopener">Google 地图 ↗</a></div></div></li>`;
     }
   });
   h+=`</ol>`;
   const i=DAYS.indexOf(d);
   h+=`<div style="display:flex;justify-content:space-between;margin-top:16px">${i>0?`<a href="#" data-go="${DAYS[i-1].id}">← ${DAYS[i-1].date}</a>`:"<span></span>"}${i<DAYS.length-1?`<a href="#" data-go="${DAYS[i+1].id}">${DAYS[i+1].date} →</a>`:`<a href="#" data-go="">回总览</a>`}</div>`;
   content.innerHTML=h;
-  content.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.variant[d.id]=b.dataset.v;state.sel=null;map.closePopup();renderContent();render();renderLegend();fitDay()});
-  content.querySelectorAll(".stop").forEach(li=>li.onclick=()=>selectStop(d.id,li.dataset.p,false,+li.dataset.i));
+  content.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.variant[d.id]=b.dataset.v;state.sel=null;renderContent();render();renderLegend();fitDay()});
+  content.querySelectorAll(".stop").forEach(li=>li.onclick=e=>{if(e.target.closest("a"))return;selectStop(d.id,li.dataset.p,false,+li.dataset.i)});
   const vis=visibleItems(d);
   content.querySelectorAll(".leg").forEach(li=>li.addEventListener("click",e=>{if(e.target.closest("a"))return;
     const lg=vis[+li.dataset.i];const x=legLines.find(o=>o.lg===lg);if(!x)return;
-    content.querySelectorAll(".leg.sel,.stop.sel").forEach(e=>e.classList.remove("sel"));
-    map.closePopup();
+    selectLeg(x,false);
     // 保持当前缩放，只平移到这段路线；这段在当前比例下放不下时才缩小，绝不放大
     const pad=isNarrow()?L.point(20,24):L.point(56,56);
     flyView(L.latLngBounds(x.ll),{paddingTopLeft:pad,paddingBottomRight:pad,maxZoom:map.getZoom()});
-    map.once("moveend",()=>{openLegPop(x);li.classList.add("sel")});
-    scrollMapIntoView();
   }));
   content.querySelectorAll("[data-go]").forEach(a=>a.onclick=e=>{e.preventDefault();go(a.dataset.go||null)});
 }
-function scrollMapIntoView(){ /* 手机上地图是 sticky 的，一直在视野里；桌面无需滚动 */ }
 function applySel(){
   markers.forEach(x=>{const e=x.el&&x.el.querySelector(".mk");if(!e)return;e.classList.toggle("sel",x.p===state.sel);e.classList.toggle("dim",!!state.sel&&x.p!==state.sel)});
   markers.forEach(x=>x.m.setZIndexOffset(x.p===state.sel?1000:(P[x.p].home?500:200)));
@@ -399,27 +391,25 @@ function showIncoming(d,inc){
   const vis=visibleItems(d);
   inc.forEach(lg=>{const li=content.querySelector(`.leg[data-i="${vis.indexOf(lg)}"]`);if(li)li.classList.add("sel")});
 }
-// 只平移、不改缩放；目的地放在中心偏下，上方给弹窗留位置
-function panKeep(ll,below){
+// 只平移、不改缩放，把目的地移到地图中央
+function panKeep(ll){
   const sz=map.getSize();
   if(!sz.x){map.fire("moveend");return}
-  const c=map.unproject(map.project(ll).subtract([0,Math.round(sz.y*(below??.18))]));
+  const c=L.latLng(ll);
   if(map.latLngToContainerPoint(c).distanceTo(sz.divideBy(2))<2){map.fire("moveend");return}
   map.panTo(c,{animate:true,duration:.45});
 }
 function selectStop(dayId,p,fromMap,idx){
   if(state.day!==dayId)go(dayId,true,true); // 换到那一天，但保持当前缩放
+  clearSel();
   state.sel=p;applySel();
   content.querySelectorAll(".stop").forEach(li=>li.classList.toggle("sel",idx!=null?+li.dataset.i===idx:li.dataset.p===p));
   const d=dayById(dayId);
-  map.closePopup(); // 会先把之前的高亮复原
-  content.querySelectorAll(".leg.sel").forEach(e=>e.classList.remove("sel"));
   showIncoming(d,incomingLegs(d,p,idx));
-  map.once("moveend",()=>{openStopPop(d,p);declutter()});
-  panKeep(P[p].ll);
-  if(fromMap){const li=content.querySelector(`.stop[data-p="${p}"]`)||content.querySelector(`.stop[data-p="${P[p].sub}"]`);
-    if(li){if(!isNarrow())li.scrollIntoView({block:"center",behavior:"smooth"});
-      else{const top=li.getBoundingClientRect().top+window.scrollY-(tabs.offsetHeight+mapwrap.offsetHeight+10);window.scrollTo({top,behavior:"smooth"})}}}
+  requestAnimationFrame(declutter);
+  if(fromMap){ // 在地图上点的：点本来就在眼前，地图不动；行程滚到这一站
+    revealRow(content.querySelector(`.stop[data-p="${p}"]`)||content.querySelector(`.stop[data-p="${P[p].sub}"]`));
+  }else panKeep(P[p].ll); // 在行程里点的：地图平移过去，缩放不变
 }
 function renderOverview(){
   let h=`<div class="note blue" style="margin-top:0">总体思路：<b>住在 Glebe，离市中心 3–5 km</b>。进城最省事是打车（约 15–20 分钟），公交 431/433 路沿 Glebe Point Rd 进城也很方便。城里景点之间 1 km 内步行，远一点用火车/轻轨/渡轮，回家累了直接打车。</div>`;
