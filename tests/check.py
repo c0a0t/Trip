@@ -1,4 +1,4 @@
-"""Playwright 检查：桌面 1400×860 与手机 390×844（触屏）。
+"""Playwright 检查：桌面 1400×860（Chromium），以及 iPhone 15 Pro / iPhone SE（WebKit）和华为 Mate 40（Chromium）三种手机。
 用法：先起本地服务器（python -m http.server 8765），再运行  python tests/check.py [http://127.0.0.1:8765/]
 截图写到 screenshots/。"""
 import json, math, pathlib, sys
@@ -40,9 +40,13 @@ def marker_xy(page, p):
         return {x:r.left+pt.x, y:r.top+pt.y} }""", p)
 
 def popup_inside(page):
+    """弹窗在地图范围内，并且弹窗标题没有被图例等浮层盖住"""
     return page.evaluate("""() => { const p=document.querySelector('.leaflet-popup'); if(!p) return null;
         const a=p.getBoundingClientRect(), b=document.getElementById('mapwrap').getBoundingClientRect();
-        return {inside: a.left>=b.left-1 && a.right<=b.right+1 && a.top>=b.top-1 && a.bottom<=b.bottom+1,
+        const h=p.querySelector('h4').getBoundingClientRect();
+        const covered=[[h.left+6,h.top+3],[h.left+h.width/2,h.top+3],[h.left+6,h.top+h.height/2],[h.right-6,h.top+h.height/2]]
+          .some(([x,y])=>{const e=document.elementFromPoint(x,y);return !(e && p.contains(e))});
+        return {inside: !covered && a.left>=b.left-1 && a.right<=b.right+1 && a.top>=b.top-1 && a.bottom<=b.bottom+1, covered,
                 text: p.innerText.slice(0,80), a:[a.left,a.top,a.right,a.bottom].map(Math.round), b:[b.left,b.top,b.right,b.bottom].map(Math.round)} }""")
 
 def common_checks(page, tag):
@@ -129,42 +133,74 @@ def desktop(pw):
     check("[桌面] 控制台无报错", not errs, " | ".join(errs[:5]))
     br.close()
 
-def touch(cdp, typ, pts):
-    cdp.send("Input.dispatchTouchEvent", {"type": typ, "touchPoints": [{"x": x, "y": y, "id": i} for i, (x, y) in enumerate(pts)]})
+IOS_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+# 手机机型：iPhone 用 WebKit（Safari 内核）；华为 Mate 40 用 Chromium（华为浏览器基于 Chromium），屏幕 2376×1080 @3x → 360 CSS px 宽
+PROFILES = {
+    "iphone15pro": dict(label="iPhone 15 Pro", engine="webkit", viewport={"width": 393, "height": 659}, screen={"width": 393, "height": 852}, dpr=3, ua=IOS_UA),
+    "iphonese":    dict(label="iPhone SE", engine="webkit", viewport={"width": 375, "height": 553}, screen={"width": 375, "height": 667}, dpr=2, ua=IOS_UA),
+    "mate40":      dict(label="华为 Mate 40", engine="chromium", viewport={"width": 360, "height": 720}, screen={"width": 360, "height": 792}, dpr=3,
+                        ua="Mozilla/5.0 (Linux; Android 10; OCE-AN10; HMSCore 6.13.0.302) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.196 HuaweiBrowser/15.0.4.312 Mobile Safari/537.36"),
+}
 
-def mobile(pw):
-    br = pw.chromium.launch()
-    ctx = br.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True,
-                         user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1")
+# iOS Safari 支持原生触摸，Leaflet 1.9 在这种浏览器里只听 TouchEvent（L.Browser.touchNative=true）。
+# Playwright 的 WebKit 不允许 new Touch()，所以构造一个带 touches/changedTouches 列表的触摸事件，结构和 Safari 发给 Leaflet 的一致。
+TOUCH_JS = """([type, pts]) => {
+  const tgt = window.__touchTgt = (type === 'touchstart' || !window.__touchTgt) ? document.elementFromPoint(pts[0][1], pts[0][2]) : window.__touchTgt;
+  const list = pts.map(([id, x, y]) => ({identifier: id, target: tgt, clientX: x, clientY: y, pageX: x + scrollX, pageY: y + scrollY, screenX: x, screenY: y, radiusX: 10, radiusY: 10, force: .5}));
+  const ev = new Event(type, {bubbles: true, cancelable: true, composed: true});
+  const active = type === 'touchend' ? [] : list;
+  for (const [k, v] of [['touches', active], ['targetTouches', active], ['changedTouches', list]]) Object.defineProperty(ev, k, {value: v});
+  tgt.dispatchEvent(ev);
+  return ev.defaultPrevented; }"""
+
+class Fingers:
+    """多指手势。Chromium 用 CDP 发真实触摸事件；WebKit 没有 CDP，改为在页面里派发触摸事件（见 TOUCH_JS）"""
+    def __init__(self, page, cdp): self.page, self.cdp, self.last = page, cdp, []
+    def _send(self, typ, pts):
+        if self.cdp:
+            self.cdp.send("Input.dispatchTouchEvent", {"type": typ, "touchPoints": [{"x": x, "y": y, "id": i} for i, (x, y) in enumerate(pts)]})
+        else:
+            self.page.evaluate(TOUCH_JS, [typ.lower(), [[i, x, y] for i, (x, y) in enumerate(pts)]])
+    def start(self, pts): self.last = pts; self._send("touchStart", pts)
+    def move(self, pts): self.last = pts; self._send("touchMove", pts)
+    def end(self): self._send("touchEnd", [] if self.cdp else self.last)
+
+def mobile(pw, key):
+    pf = PROFILES[key]; tag = pf["label"]
+    br = getattr(pw, pf["engine"]).launch()
+    ctx = br.new_context(viewport=pf["viewport"], screen=pf["screen"], device_scale_factor=pf["dpr"], is_mobile=True, has_touch=True, user_agent=pf["ua"])
     page = ctx.new_page(); logs = []; attach_console(page, logs)
-    cdp = ctx.new_cdp_session(page)
+    fingers = Fingers(page, ctx.new_cdp_session(page) if pf["engine"] == "chromium" else None)
+    VH = pf["viewport"]["height"]
+    shot = lambda name: page.screenshot(path=str(OUT / f"{key}-{name}.png"))
     page.goto(URL + "#day2"); page.wait_for_function("window.__app"); wait_idle(page, 1500)
+    check(f"[{tag}] 浏览器内核", True, page.evaluate("navigator.userAgent")[:60] + f"… engine={pf['engine']}")
     t = tiles_ok(page)
-    check("[手机] 瓦片加载", t["loaded"] > 4 and t["bad"] == 0, str(t))
-    page.screenshot(path=str(OUT / "mobile-day2-top.png"))
+    check(f"[{tag}] 瓦片加载", t["n"] >= 4 and t["loaded"] == t["n"] and t["bad"] == 0, str(t))
+    shot("day2-top")
     # 吸顶：滚动后日期栏和地图都固定在顶部
     page.evaluate("window.scrollTo(0, 900)"); page.wait_for_timeout(500)
     g = page.evaluate("""() => { const t=document.getElementById('tabs').getBoundingClientRect(), m=document.getElementById('mapwrap').getBoundingClientRect();
         return {scrollY:scrollY, tabsTop:t.top, tabsBottom:t.bottom, mapTop:m.top, mapH:m.height} }""")
-    check("[手机] 往下滚时间线：日期栏和地图固定在顶部", g["scrollY"] > 300 and abs(g["tabsTop"]) < 1 and abs(g["mapTop"] - g["tabsBottom"]) < 2, str(g))
-    page.screenshot(path=str(OUT / "mobile-day2-scrolled.png"))
+    check(f"[{tag}] 往下滚时间线：日期栏和地图固定在顶部", g["scrollY"] > 300 and abs(g["tabsTop"]) < 1 and abs(g["mapTop"] - g["tabsBottom"]) < 2, str(g))
+    shot("day2-scrolled")
     page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(300)
     box = page.locator("#map").bounding_box()
     cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
     # 单指拖动：地图平移，页面不滚动
     c0 = page.evaluate("__app.map.getCenter()"); y0 = page.evaluate("scrollY")
-    touch(cdp, "touchStart", [(cx, cy)])
-    for i in range(1, 11): touch(cdp, "touchMove", [(cx - 8 * i, cy + 6 * i)]); page.wait_for_timeout(16)
-    touch(cdp, "touchEnd", []); page.wait_for_timeout(600)
+    fingers.start([(cx, cy)])
+    for i in range(1, 11): fingers.move([(cx - 8 * i, cy + 6 * i)]); page.wait_for_timeout(16)
+    fingers.end(); page.wait_for_timeout(600)
     c1 = page.evaluate("__app.map.getCenter()"); y1 = page.evaluate("scrollY")
-    check("[手机] 单指拖动只移动地图", (abs(c1["lat"] - c0["lat"]) + abs(c1["lng"] - c0["lng"])) > 1e-4 and y1 == y0, f"scroll {y0}->{y1}")
+    check(f"[{tag}] 单指拖动只移动地图", (abs(c1["lat"] - c0["lat"]) + abs(c1["lng"] - c0["lng"])) > 1e-4 and y1 == y0, f"scroll {y0}->{y1}")
     # 双指缩放：地图放大，网页本身不缩放
     z0 = page.evaluate("__app.map.getZoom()")
-    touch(cdp, "touchStart", [(cx - 30, cy), (cx + 30, cy)])
-    for i in range(1, 13): touch(cdp, "touchMove", [(cx - 30 - 9 * i, cy), (cx + 30 + 9 * i, cy)]); page.wait_for_timeout(16)
-    touch(cdp, "touchEnd", []); page.wait_for_timeout(900)
+    fingers.start([(cx - 30, cy), (cx + 30, cy)])
+    for i in range(1, 13): fingers.move([(cx - 30 - 9 * i, cy), (cx + 30 + 9 * i, cy)]); page.wait_for_timeout(16)
+    fingers.end(); page.wait_for_timeout(900)
     z1 = page.evaluate("__app.map.getZoom()"); vs = page.evaluate("visualViewport.scale")
-    check("[手机] 双指缩放只缩放地图", z1 > z0 + 0.5 and abs(vs - 1) < 1e-6, f"zoom {z0}->{z1}, page scale {vs}")
+    check(f"[{tag}] 双指缩放只缩放地图", z1 > z0 + 0.5 and abs(vs - 1) < 1e-6, f"zoom {z0}->{z1}, page scale {vs}")
     # 靠得近的标记：点在两个标记之间偏向某一个，应选中最近的那个
     page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
     for tgt, other, frac in (("stmary", "hpb", 0.62), ("hpb", "stmary", 0.38)):
@@ -175,25 +211,25 @@ def mobile(pw):
         d = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
         tx, ty = a["x"] + (b["x"] - a["x"]) * frac, a["y"] + (b["y"] - a["y"]) * frac
         page.touchscreen.tap(tx, ty); page.wait_for_timeout(1300)
-        check(f"[手机] 两个标记相距 {d:.0f}px，点偏向 {tgt} 的位置 → 选中 {tgt}", page.evaluate("__app.state.sel") == tgt, page.evaluate("__app.state.sel"))
+        check(f"[{tag}] 两个标记相距 {d:.0f}px，点偏向 {tgt} 的位置 → 选中 {tgt}", page.evaluate("__app.state.sel") == tgt, page.evaluate("__app.state.sel"))
     # 弹窗不超出地图（地图边缘的点也测）
     for p in ("mpwharf", "soh", "home", "milsonpark"):
         page.evaluate(f"__app.selectStop('day2','{p}',false)"); page.wait_for_timeout(1500)
         pi = popup_inside(page)
-        check(f"[手机] {p} 弹窗在地图范围内", pi and pi["inside"], str(pi))
-    page.screenshot(path=str(OUT / "mobile-popup.png"))
+        check(f"[{tag}] {p} 弹窗在地图范围内", pi and pi["inside"], str(pi))
+    shot("popup")
     # 时间线点地点（手机）
     page.evaluate("window.scrollTo(0, 700)"); page.wait_for_timeout(300)
     page.locator(".stop[data-p='westfield']").tap(); page.wait_for_timeout(1400)
-    check("[手机] 时间线点地点 → 地图定位并弹窗", page.evaluate("__app.state.sel") == "westfield" and popup_inside(page) is not None)
+    check(f"[{tag}] 时间线点地点 → 地图定位并弹窗", page.evaluate("__app.state.sel") == "westfield" and popup_inside(page) is not None)
     # 展开地图
     page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(300)
     h0 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
     page.locator(".ctl-exp").tap(); page.wait_for_timeout(700)
     h1 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
-    check("[手机] 展开地图到大半屏", h1 > 844 * 0.68 and h1 > h0 + 150, f"{h0}px -> {h1}px")
+    check(f"[{tag}] 展开地图到大半屏", h1 > VH * 0.68 and h1 > h0 + 150, f"{h0}px -> {h1}px")
     wait_idle(page, 600)
-    page.screenshot(path=str(OUT / "mobile-expanded.png"))
+    shot("expanded")
     page.locator(".ctl-exp").tap(); page.wait_for_timeout(600)
     # 地图上点路段
     page.evaluate("__app.go('day3')"); wait_idle(page, 1300)
@@ -202,18 +238,18 @@ def mobile(pw):
         return {x:r.left+pt.x, y:r.top+pt.y} }""")
     page.touchscreen.tap(mid["x"], mid["y"]); page.wait_for_timeout(900)
     pi = popup_inside(page)
-    check("[手机] 点地图上的路段 → 显示交通方式", pi and "渡轮" in pi["text"] and pi["inside"], str(pi))
-    page.screenshot(path=str(OUT / "mobile-day3-ferry.png"))
-    common_checks(page, "手机")
+    check(f"[{tag}] 点地图上的路段 → 显示交通方式", pi and "渡轮" in pi["text"] and pi["inside"], str(pi))
+    shot("day3-ferry")
+    common_checks(page, tag)
     page.evaluate("__app.go(null)"); wait_idle(page, 1000)
-    page.screenshot(path=str(OUT / "mobile-overview.png"))
+    shot("overview")
     errs = [l for l in logs if not l.startswith("warning")]
-    check("[手机] 控制台无报错", not errs, " | ".join(errs[:5]))
+    check(f"[{tag}] 控制台无报错", not errs, " | ".join(errs[:5]))
     br.close()
 
 with sync_playwright() as pw:
     desktop(pw)
-    mobile(pw)
+    for k in PROFILES: mobile(pw, k)
 fails = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(fails)}/{len(results)} 通过")
 sys.exit(1 if fails else 0)

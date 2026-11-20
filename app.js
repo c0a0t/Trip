@@ -191,7 +191,8 @@ function highlightLeg(x){
   legLines.forEach(o=>o.line.setStyle({opacity:o===x?1:(state.day?.35:.25)}));
   x.line.bringToFront();clearTimeout(hlTimer);
 }
-map.on("popupclose",()=>{legLines.forEach(o=>{const schem=(legInfo(o.lg)||{}).kind==="schematic";o.line.setStyle({opacity:state.day?(schem?.6:1):.8})});
+map.on("popupopen",()=>mapwrap.classList.add("popopen"));
+map.on("popupclose",()=>{mapwrap.classList.remove("popopen");legLines.forEach(o=>{const schem=(legInfo(o.lg)||{}).kind==="schematic";o.line.setStyle({opacity:state.day?(schem?.6:1):.8})});
   document.querySelectorAll(".leg.sel").forEach(e=>e.classList.remove("sel"))});
 const fmtDist=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+" km":Math.round(m/10)*10+" m";
 

@@ -26,7 +26,8 @@ nav.tabs::-webkit-scrollbar{display:none}
 .leaflet-bar a.ctl{font-size:17px;line-height:30px;font-weight:600;color:var(--ink)}
 .leaflet-touch .leaflet-bar a.ctl{line-height:30px}
 .ctl-exp{display:none !important}
-.legend{position:absolute;left:10px;top:10px;z-index:900;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:11.5px;display:flex;flex-wrap:wrap;gap:3px 11px;max-width:calc(100% - 70px);pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.legend{position:absolute;left:10px;top:10px;z-index:900;transition:opacity .15s;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:11.5px;display:flex;flex-wrap:wrap;gap:3px 11px;max-width:calc(100% - 70px);pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.mapwrap.popopen .legend{opacity:0;visibility:hidden} /* 弹窗打开时收起图例，小屏上不会挡住弹窗 */
 .legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .legend svg{display:block}
 #tip{position:absolute;z-index:1000;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;padding:4px 8px;border-radius:6px;display:none;white-space:nowrap;max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis}
