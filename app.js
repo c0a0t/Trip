@@ -35,7 +35,7 @@ DAYS.forEach(d=>d.items.forEach(it=>{
 }));
 
 /* ======================= 状态 ======================= */
-const state={day:null,variant:{},sel:null,selLeg:null};
+const state={day:null,view:null,variant:{},sel:null,selLeg:null};
 DAYS.forEach(d=>{if(d.variants)state.variant[d.id]=d.variants.def});
 const dayById=id=>DAYS.find(d=>d.id===id);
 const visibleItems=d=>d.items.filter(it=>{const v=it.v||it.vv;return !v||v===state.variant[d.id]});
@@ -322,9 +322,10 @@ function gmBlock(d){
 const tabs=document.getElementById("tabs"),content=document.getElementById("content");
 function renderTabs(){
   tabs.innerHTML="";
-  const mk=(id,label,color)=>{const b=document.createElement("button");b.className="tab"+(state.day===id?" on":"");
+  const cur=state.view||state.day;
+  const mk=(id,label,color)=>{const b=document.createElement("button");b.className="tab"+(cur===id?" on":"");
     b.innerHTML=(color?`<span class="dot" style="background:${color}"></span>`:"")+label;b.onclick=()=>go(id);tabs.appendChild(b)};
-  mk(null,"总览");DAYS.forEach(d=>mk(d.id,`${d.date} ${d.wk}`,d.color));
+  mk(null,"总览");mk("cal","日历");DAYS.forEach(d=>mk(d.id,`${d.date} ${d.wk}`,d.color));
   const on=tabs.querySelector(".on");if(on)tabs.scrollLeft=on.offsetLeft-tabs.clientWidth/2+on.offsetWidth/2;
 }
 function renderLegend(){
@@ -336,12 +337,13 @@ function renderLegend(){
   lg.innerHTML=Object.entries(MODES).filter(([k])=>used.has(k)).map(([k,m])=>`<span>${sw(m,k)}${m.n}</span>`).join("");
 }
 function go(id,push=true,keepView=false){
-  state.day=id;state.sel=null;renderTabs();renderContent();render();renderLegend();if(!keepView)fitDay();
-  if(push){try{history.replaceState(null,"",id?"#"+id:"#overview")}catch(e){}}
+  const cal=id==="cal";
+  state.view=cal?"cal":null;state.day=cal?null:id;state.sel=null;renderTabs();renderContent();render();renderLegend();if(!keepView)fitDay();
+  if(push){try{history.replaceState(null,"",cal?"#calendar":id?"#"+id:"#overview")}catch(e){}}
   content.scrollTop=0;if(isNarrow())window.scrollTo({top:0});
 }
 function renderContent(){
-  if(!state.day){renderOverview();return}
+  if(!state.day){if(state.view==="cal")renderCalendar();else renderOverview();return}
   const d=dayById(state.day);const num=numbering(d);
   let h=`<div class="dayhead"><div class="kicker"><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${d.color}"></span>${d.date} ${d.wk}</div><h2>${d.title}</h2><div style="color:#3b3f45">${d.sum}</div><div class="chips">${d.chips.map(c=>`<span class="chip">${c}</span>`).join("")}</div></div>`;
   if(d.variants){h+=`<div class="seg" role="tablist" aria-label="${d.variants.label}">${d.variants.opts.map(o=>`<button data-v="${o[0]}" class="${state.variant[d.id]===o[0]?"on":""}">${o[1]}</button>`).join("")}</div>`}
@@ -446,15 +448,85 @@ function renderOverview(){
   content.querySelectorAll("[data-go]").forEach(c=>c.onclick=()=>go(c.dataset.go));
 }
 
+/* ======================= 日历 ======================= */
+const YEAR=2026; // data.js 里只有月/日；11/24 是周二 → 2026 年
+// 每天的简称和简表：时间从行程里取（跟着方案切换走），这里只写短名字
+const CAL={
+  day1:{tag:["落地","夜景"],keys:[["home","抵达住处","12:00"],["fish","鱼市场午饭"],["dh","达令港 → 海滨步道"],["soh","歌剧院夜景"]]},
+  day2:{tag:["歌剧院","大桥"],keys:[["soh","歌剧院中文导览"],["rbg","皇家植物园"],["hpb","军营博物馆"],["bstairs","走海港大桥"],["mpwharf","坐渡轮回"]]},
+  day3:{tag:["动物园"],keys:[["cq","码头坐船"],["zootop","正门入园，往下逛"],["zoowharf","出园坐船回","16:15"]]},
+  day4:{tag:["蓝山","一日团"],keys:[["meet","集合出发"],["bluemtn","三姐妹峰 + 三种缆车"],["chinatown","唐人街晚饭"]]},
+  day5:{tag:["市集","休闲"],keys:[["glebemkt","Glebe 周六市集"],["usyd","悉尼大学"],["happypho","Happy Pho 午饭"],["bondi","Bondi 看海"],["chinatown","唐人街慢慢逛"]]},
+  day6:{tag:["退房","回程"],keys:[["home","收拾、退房","09:00"],["glebepointrd","早午餐"],["home","取行李去机场","11:00"]]}
+};
+function calItems(d){
+  const vis=visibleItems(d);
+  return ((CAL[d.id]||{}).keys||[]).map(([p,lab,t])=>{const it=vis.find(i=>!i.leg&&i.p===p&&(!t||i.t===t));return it&&{t:it.t,lab}}).filter(Boolean);
+}
+const tagOf=d=>CAL[d.id].tag.join(" · ");
+const isoOf=d=>`${YEAR}-${d.date.replace("/","-")}`;
+function sydToday(){
+  if(window.__TODAY)return window.__TODAY; // 测试用
+  try{return new Intl.DateTimeFormat("en-CA",{timeZone:"Australia/Sydney",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())}catch(e){return ""}
+}
+function renderCalendar(){
+  const today=sydToday(),byIso={};DAYS.forEach(d=>byIso[isoOf(d)]=d);
+  const [m0]=DAYS[0].date.split("/").map(Number);
+  const first=new Date(YEAR,m0-1,1),nDays=new Date(YEAR,m0,0).getDate(),off=(first.getDay()+6)%7;
+  const startIso=isoOf(DAYS[0]),endIso=isoOf(DAYS[DAYS.length-1]);
+  let status="";
+  if(today&&today<startIso){const n=Math.round((Date.parse(startIso)-Date.parse(today))/864e5);status=`还有 ${n} 天出发`}
+  else if(byIso[today])status=`今天是第 ${DAYS.indexOf(byIso[today])+1} 天`;
+  else if(today&&today>endIso)status="行程已结束";
+  let h=`<div class="cal"><div class="mh"><b>${YEAR} 年 ${m0} 月</b><span class="status">${status}</span></div><div class="grid">`;
+  h+="一二三四五六日".split("").map(w=>`<div class="wd">${w}</div>`).join("");
+  for(let i=0;i<off;i++)h+=`<div class="c blank"></div>`;
+  for(let n=1;n<=nDays;n++){
+    const iso=`${YEAR}-${String(m0).padStart(2,"0")}-${String(n).padStart(2,"0")}`,d=byIso[iso],td=iso===today?" today":"";
+    if(d)h+=`<button class="c trip${td}" data-go="${d.id}" style="--dc:${d.color};background:${d.color}1A;border-top-color:${d.color}" aria-label="${d.date} ${d.wk} ${tagOf(d)}"><span class="n">${n}</span><span class="tag">${CAL[d.id].tag.map(t=>`<span>${t}</span>`).join("")}</span></button>`;
+    else h+=`<div class="c${td}"><span class="n">${n}</span></div>`;
+  }
+  h+=`</div><div class="calnote">点日期看当天的地图和详细行程</div></div>`;
+  h+=`<div class="agenda">`;
+  DAYS.forEach(d=>{const td=isoOf(d)===today;
+    h+=`<div class="ag${td?" today":""}" data-go="${d.id}" data-day="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="hd">${d.date} ${d.wk}${td?'<em>今天</em>':""}<small>${tagOf(d)}</small></div><ul>${calItems(d).map(x=>`<li><span class="t">${x.t}</span><span>${x.lab}</span></li>`).join("")}</ul></div></div>`});
+  h+=`</div><button class="icsbtn" id="icsbtn" type="button">📅 加到手机日历（.ics）</button><div class="calnote">每天一条全天日程，备注里是当天简表和这个网页的链接。苹果手机点了直接“添加全部”；华为手机下载后点开文件，用“日历”打开导入。</div>`;
+  content.innerHTML=h;
+  content.querySelectorAll("[data-go]").forEach(c=>c.onclick=()=>go(c.dataset.go));
+  document.getElementById("icsbtn").onclick=downloadIcs;
+}
+function icsText(){
+  const esc=s=>String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n");
+  const enc=new TextEncoder();
+  const fold=line=>{let out="",n=0;for(const ch of line){const b=enc.encode(ch).length;if(n+b>74){out+="\r\n ";n=1}out+=ch;n+=b}return out};
+  const ymd=(d,plus)=>{const [m,dd]=d.date.split("/").map(Number);return new Date(Date.UTC(YEAR,m-1,dd+(plus||0))).toISOString().slice(0,10).replace(/-/g,"")};
+  const base=location.href.split("#")[0];
+  const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
+  const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:悉尼行程"];
+  DAYS.forEach(d=>{
+    const desc=calItems(d).map(x=>`${x.t} ${x.lab}`).join("\n")+`\n\n${d.title}\n${base}#${d.id}`;
+    out.push("BEGIN:VEVENT",`UID:${d.id}-${YEAR}@sydney-trip-map`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${ymd(d)}`,`DTEND;VALUE=DATE:${ymd(d,1)}`,
+      `SUMMARY:${esc("悉尼 · "+tagOf(d))}`,`DESCRIPTION:${esc(desc)}`,`URL:${base}#${d.id}`,"TRANSP:TRANSPARENT","END:VEVENT");
+  });
+  out.push("END:VCALENDAR");
+  return out.map(fold).join("\r\n")+"\r\n";
+}
+function downloadIcs(){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([icsText()],{type:"text/calendar;charset=utf-8"}));
+  a.download="sydney-trip.ics";document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
+}
+
 /* ======================= 启动 ======================= */
 function setTabsH(){document.documentElement.style.setProperty("--tabsH",tabs.offsetHeight+"px")}
 let lastW=window.innerWidth;
 window.addEventListener("resize",()=>{setTabsH();if(Math.abs(window.innerWidth-lastW)>2)restoreMapH();map.invalidateSize();if(Math.abs(window.innerWidth-lastW)>2){lastW=window.innerWidth;fitDay()}});
-const h0=(location.hash||"").slice(1);
-go(dayById(h0)?h0:null,false);
+const viewOfHash=()=>{const h=(location.hash||"").slice(1);return h==="calendar"?"cal":dayById(h)?h:null};
+go(viewOfHash(),false);
 setTabsH(); // 日期标签渲染之后再量高度，地图才会正好吸在日期栏下面
 restoreMapH(); // 手机上恢复上次拖好的地图高度
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(setTabsH);
-window.addEventListener("hashchange",()=>{const h=(location.hash||"").slice(1);if((dayById(h)?h:null)!==state.day)go(dayById(h)?h:null,false)});
-window.__app={map,state,ROUTES,GEO,go,selectStop,get markers(){return markers},get legLines(){return legLines}}; // 测试用
+window.addEventListener("hashchange",()=>{const v=viewOfHash();if(v!==(state.view||state.day))go(v,false)});
+window.__app={map,state,ROUTES,GEO,go,selectStop,icsText,get markers(){return markers},get legLines(){return legLines}}; // 测试用
 })();

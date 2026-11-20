@@ -90,7 +90,7 @@ def desktop(pw):
     check("[桌面] OSM 署名", "OpenStreetMap" in page.inner_text(".leaflet-control-attribution"))
     page.screenshot(path=str(OUT / "desktop-overview.png"))
     # 日期标签
-    page.click("nav.tabs .tab:nth-child(3)"); wait_idle(page, 1200)
+    page.click("nav.tabs .tab:nth-child(4)"); wait_idle(page, 1200)
     check("[桌面] 点日期标签切到 11/25", page.evaluate("__app.state.day") == "day2" and "11/25" in page.inner_text(".dayhead"))
     page.screenshot(path=str(OUT / "desktop-day2.png"))
     # “在 Google 地图看真实路线”默认收起，点一下展开
@@ -144,6 +144,11 @@ def desktop(pw):
     b = page.evaluate("(()=>{const b=__app.map.getBounds();return [b.getWest(),b.getEast(),b.getSouth(),b.getNorth()]})()")
     check("[桌面] 11/27 视野包含蓝山 Scenic World 和 Echo Point", b[0] < 150.30 and b[1] > 151.2, str([round(v, 3) for v in b]))
     page.screenshot(path=str(OUT / "desktop-day4-bluemountains.png"))
+    calendar_checks(page, "桌面", lambda n: page.screenshot(path=str(OUT / f"desktop-{n}.png")))
+    with page.expect_download() as dl:
+        page.click("#icsbtn")
+    d = dl.value; body = open(d.path(), encoding="utf-8").read()
+    check("[桌面] 点“加到手机日历”下载 sydney-trip.ics", d.suggested_filename == "sydney-trip.ics" and body.count("BEGIN:VEVENT") == 6, d.suggested_filename)
     common_checks(page, "桌面")
     page.evaluate("__app.go(null)"); wait_idle(page, 800)
     errs = [l for l in logs if not l.startswith("warning")]
@@ -181,6 +186,51 @@ class Fingers:
     def start(self, pts): self.last = pts; self._send("touchStart", pts)
     def move(self, pts): self.last = pts; self._send("touchMove", pts)
     def end(self): self._send("touchEnd", [] if self.cdp else self.last)
+
+def calendar_checks(page, tag, shot):
+    # 日历标签
+    page.click("nav.tabs .tab:nth-child(2)"); wait_idle(page, 900)
+    st = page.evaluate("""() => ({view:__app.state.view, day:__app.state.day, hash:location.hash,
+        on:document.querySelector('#tabs .tab.on').innerText,
+        cells:[...document.querySelectorAll('.cal .c.trip')].map(c=>c.innerText.replace(/\\s+/g,' ')),
+        ag:[...document.querySelectorAll('.ag')].map(a=>[...a.querySelectorAll('li')].map(l=>l.innerText.replace(/\\s+/g,' '))),
+        head:document.querySelector('.cal .mh').innerText})""")
+    check(f"[{tag}] 日历标签：切过去、地址 #calendar", st["view"] == "cal" and st["day"] is None and st["hash"] == "#calendar" and st["on"] == "日历", str({k: st[k] for k in ("view", "hash", "on")}))
+    check(f"[{tag}] 日历：2026 年 11 月，24–29 日 6 格有简称", "2026 年 11 月" in st["head"] and len(st["cells"]) == 6
+          and st["cells"][0].startswith("24") and st["cells"][-1].startswith("29") and all(len(c) > 3 for c in st["cells"]), str(st["cells"]))
+    check(f"[{tag}] 每日简表 6 天，每天 3–5 条带时间", len(st["ag"]) == 6 and all(3 <= len(a) <= 5 for a in st["ag"])
+          and st["ag"][0][0] == "12:00 抵达住处" and "16:15 出园坐船回" in st["ag"][2] and "11:00 取行李去机场" in st["ag"][5], str(st["ag"]))
+    ov = page.evaluate("""() => { const bad=[...document.querySelectorAll('.cal .c, .ag')].filter(e=>e.scrollWidth>e.clientWidth+1).length;
+        return {sw:document.documentElement.scrollWidth, vw:innerWidth, bad} }""")
+    check(f"[{tag}] 日历不撑出横向滚动、格子文字不溢出", ov["sw"] <= ov["vw"] and ov["bad"] == 0, str(ov))
+    shot("calendar")
+    # “今天”标记
+    page.evaluate("window.__TODAY='2026-11-21'; __app.go('cal')"); page.wait_for_timeout(200)
+    s1 = page.inner_text(".cal .mh .status")
+    page.evaluate("window.__TODAY='2026-11-26'; __app.go('cal')"); page.wait_for_timeout(200)
+    s2 = page.evaluate("""() => ({s:document.querySelector('.cal .mh .status').innerText, cell:(document.querySelector('.cal .c.today')||{dataset:{}}).dataset.go,
+        ag:(document.querySelector('.ag.today')||{dataset:{}}).dataset.day})""")
+    check(f"[{tag}] 出发前显示倒计时、行程中标出今天", s1 == "还有 3 天出发" and s2 == {"s": "今天是第 3 天", "cell": "day3", "ag": "day3"}, f"{s1} | {s2}")
+    shot("calendar-today")
+    page.evaluate("delete window.__TODAY; __app.go('cal')"); page.wait_for_timeout(200)
+    # .ics
+    ics = page.evaluate("__app.icsText()")
+    CRLF = chr(13) + chr(10)
+    lines = ics.split(CRLF)
+    ev = ics.count("BEGIN:VEVENT")
+    starts = [l.split(":")[1] for l in lines if l.startswith("DTSTART")]
+    longest = max(len(l.encode("utf-8")) for l in lines)
+    unfold = ics.replace(CRLF + " ", "")
+    check(f"[{tag}] .ics：6 个全天日程 11/24–11/29，折行合规", ev == 6 and starts == [f"202611{d}" for d in range(24, 30)] and longest <= 75
+          and "SUMMARY:悉尼 · 动物园" in unfold and "#day3" in unfold and ics.endswith(CRLF), f"ev={ev} starts={starts} longest={longest}")
+    # 点日历格子 / 简表卡片 → 去那天
+    page.click(".cal .c.trip[data-go='day4']"); wait_idle(page, 700)
+    a = page.evaluate("[__app.state.day, __app.state.view, location.hash]")
+    page.evaluate("__app.go('cal')"); wait_idle(page, 500)
+    page.click(".ag[data-day='day5']"); wait_idle(page, 700)
+    b = page.evaluate("[__app.state.day, __app.state.view]")
+    check(f"[{tag}] 点日历格子/简表 → 进到那一天", a == ["day4", None, "#day4"] and b == ["day5", None], f"{a} {b}")
+    page.evaluate("__app.go('cal')"); wait_idle(page, 300)
 
 def mobile(pw, key):
     pf = PROFILES[key]; tag = pf["label"]
@@ -296,6 +346,7 @@ def mobile(pw, key):
     st = sel_state(page)
     check(f"[{tag}] 点地图上的路段 → 高亮并在行程里标出，无气泡", st["on"] == ["cq>zoowharf"] and any("渡轮" in r for r in st["rows"]) and not st["popup"], str(st))
     shot("day3-ferry")
+    calendar_checks(page, tag, shot)
     common_checks(page, tag)
     page.evaluate("__app.go(null)"); wait_idle(page, 1000)
     shot("overview")
