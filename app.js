@@ -22,6 +22,18 @@ const legKey=lg=>`${lg.mode}:${lg.from}>${lg.to}`;
 const legPath=lg=>{const r=ROUTES[legKey(lg)];return r?r.coords:(lg.path||[P[lg.from].ll,P[lg.to].ll])};
 const legInfo=lg=>ROUTES[legKey(lg)]||null;
 
+/* 步行时间：按 55 岁左右、不赶路的步速 4 km/h（约 67 米/分钟，已含过马路等红灯）和真实路线长度重算；
+   上坡路段 ×1.25。原来写的时长保留在 durOrig，页面显示新算的。动物园园内是示意线，不改。 */
+const WALK_KMH=4, UPHILL=1.25;
+const distTxt=m=>m>=1000?(m/1000).toFixed(1).replace(/\.0$/,"")+" km":Math.round(m/10)*10+" m";
+DAYS.forEach(d=>d.items.forEach(it=>{
+  if(!it.leg||it.mode!=="walk")return;
+  const r=ROUTES[legKey(it)];if(!r||r.kind==="schematic"||!r.dist)return;
+  const up=/上坡/.test(it.dur+(it.note||""));
+  const min=Math.max(2,Math.round(r.dist/(WALK_KMH*1000/60)*(up?UPHILL:1)));
+  it.durOrig=it.dur;it.dur=`约 ${min} 分钟 · ${distTxt(r.dist)}${up?" · 上坡":""}`;
+}));
+
 /* ======================= 状态 ======================= */
 const state={day:null,variant:{},sel:null,selLeg:null};
 DAYS.forEach(d=>{if(d.variants)state.variant[d.id]=d.variants.def});
@@ -184,19 +196,21 @@ map.on("mousemove",e=>{if(coarse)return;cancelAnimationFrame(hoverRaf);hoverRaf=
 map.on("mouseout dragstart zoomstart",hideTip);
 
 /* ---------- 弹窗（autoPan + 宽度随地图，保证不超出地图） ---------- */
-function popOpts(){const w=mapwrap.clientWidth;return{maxWidth:Math.max(160,Math.min(270,w-70)),minWidth:Math.min(170,w-90),autoPan:true,keepInView:false,/* 只在弹窗打开时挪一次，之后可以自由拖走地图 */
-  autoPanPaddingTopLeft:L.point(10,isNarrow()?12:56),autoPanPaddingBottomRight:L.point(10,24),closeButton:true,className:"pp"}}
+// 弹窗：窄一点、字小一点、半透明（样式见 app.css .pp）；只在打开时自动挪一次，之后可以自由拖走地图
+function popOpts(offY){const w=mapwrap.clientWidth;return{maxWidth:Math.max(140,Math.min(isNarrow()?200:240,w-70)),minWidth:Math.min(120,w-90),
+  autoPan:true,keepInView:false,offset:L.point(0,offY??4),
+  autoPanPaddingTopLeft:L.point(8,isNarrow()?10:56),autoPanPaddingBottomRight:L.point(8,16),closeButton:true,className:"pp"}}
 function openStopPop(d,p){
   const pl=P[p];const items=visibleItems(d).filter(i=>!i.leg&&i.p===p);const it=items[0];
   const times=items.map(i=>i.t).join(" / ");
-  const head=pl.sub?`<div style="margin-top:4px">属于「${P[pl.sub].n}」这一站（跟团行程）</div>`:(it&&it.h?`<div style="margin-top:4px">${it.h}</div>`:"");
-  const html=`<h4>${pl.n}</h4><div class="t">${d.date} ${d.wk}${times?" · "+times:""}</div>${head}<div style="margin-top:6px"><a href="${gmPlace(pl)}" target="_blank" rel="noopener">在 Google Maps 打开 ↗</a></div>`;
-  L.popup(popOpts()).setLatLng(pl.ll).setContent(html).openOn(map);
+  const head=pl.sub?`<div class="d">属于「${shortN(pl.sub)}」这一站（跟团）</div>`:(it&&it.h&&it.h!==pl.n?`<div class="d">${it.h}</div>`:"");
+  const html=`<h4>${pl.n}</h4><div class="t">${d.date} ${d.wk}${times?" · "+times:""}</div>${head}<div class="acts"><a href="${gmPlace(pl)}" target="_blank" rel="noopener">Google 地图 ↗</a></div>`;
+  L.popup(popOpts(-8)).setLatLng(pl.ll).setContent(html).openOn(map); // 上移一点，尖角落在标记上方，不压住标记
 }
 function openLegPop(x,at){
   const lg=x.lg,m=MODES[lg.mode],info=legInfo(lg);
-  const km=info&&info.dist?` · 路线约 ${fmtDist(info.dist)}`:"";
-  const html=`<h4>${m.ic} ${m.n}</h4><div class="t">${x.d.date} ${x.d.wk} · ${lg.dur}${km}</div><div style="margin-top:4px">${shortN(lg.from)} → ${shortN(lg.to)}</div>${lg.note?`<div class="t" style="margin-top:2px">${lg.note}</div>`:""}${info&&info.kind==="schematic"?`<div class="t">园内路线为示意</div>`:""}${NO_NAV.has(lg.to)?"":`<div style="margin-top:4px"><a href="${gmDir(lg.from,lg.to,lg.mode)}" target="_blank" rel="noopener">导航 ↗</a></div>`}`;
+  const km=info&&info.dist&&info.kind!=="schematic"&&!lg.durOrig?`<span class="t">路线约 ${fmtDist(info.dist)}</span>`:"";
+  const html=`<h4>${m.ic} ${m.n} · ${lg.dur}</h4><div class="d">${shortN(lg.from)} → ${shortN(lg.to)}</div>${lg.note?`<div class="t">${lg.note}</div>`:""}${info&&info.kind==="schematic"?`<div class="t">园内路线为示意</div>`:""}<div class="acts">${km}${NO_NAV.has(lg.to)?"":`<a href="${gmDir(lg.from,lg.to,lg.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}</div>`;
   highlightLeg(x);
   L.popup(popOpts()).setLatLng(at||midpoint(x.ll)).setContent(html).openOn(map);
 }
@@ -341,7 +355,7 @@ function renderContent(){
   h+=`<ol class="tl">`;
   visibleItems(d).forEach((it,idx)=>{
     if(it.leg){const m=MODES[it.mode],info=legInfo(it);
-      const km=info&&info.dist&&info.kind!=="schematic"?`<span class="km">路线 ${fmtDist(info.dist)}</span>`:"";
+      const km=info&&info.dist&&info.kind!=="schematic"&&!it.durOrig?`<span class="km">路线 ${fmtDist(info.dist)}</span>`:"";
       h+=`<li class="leg" data-i="${idx}"><div></div><div class="rail"><i style="border-left-color:${m.c};border-left-style:${it.mode==="walk"?"dotted":"solid"}"></i></div><div class="body"><span class="mode">${m.ic} ${m.n}</span><span>${it.dur}</span>${it.note?`<span>· ${it.note}</span>`:""}${km}${NO_NAV.has(it.to)?"":`<a class="nav" href="${gmDir(it.from,it.to,it.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}${it.alt?`<span class="alt">替代：${it.alt}</span>`:""}</div></li>`;
     }else{const pl=P[it.p];
       const badge=pl.home?`<span class="badge" style="background:#1F2328">家</span>`:`<span class="badge" style="background:${it.extra?"#9AA0A6":d.color}">${num[it.p]}</span>`;
@@ -411,7 +425,7 @@ function renderOverview(){
   let h=`<div class="note blue" style="margin-top:0">总体思路：<b>住在 Glebe，离市中心 3–5 km</b>。进城最省事是打车（约 15–20 分钟），公交 431/433 路沿 Glebe Point Rd 进城也很方便。城里景点之间 1 km 内步行，远一点用火车/轻轨/渡轮，回家累了直接打车。</div>`;
   if(loadErr)h+=`<div class="warn">真实路线数据没加载到（${loadErr.message}），地图上暂时显示近似折线。</div>`;
   DAYS.forEach(d=>h+=`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
-  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图，地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。</div>`;
+  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图，地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 25 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。</div>`;
   h+=`<div class="sec"><h3>出发前要订的</h3><ul>
   <li><b>歌剧院普通话导览</b>（25 日上午）：官网选 “Mandarin Tour”，约 1 小时，只用中文讲解。有“导览 + 用餐”套餐可选（餐点需在当天 18:00 前兑换）。</li>
   <li><b>海德公园军营博物馆</b>（25 日）：免费，官网预约时段。</li>

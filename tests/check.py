@@ -94,6 +94,12 @@ def desktop(pw):
     page.click("nav.tabs .tab:nth-child(3)"); wait_idle(page, 1200)
     check("[桌面] 点日期标签切到 11/25", page.evaluate("__app.state.day") == "day2" and "11/25" in page.inner_text(".dayhead"))
     page.screenshot(path=str(OUT / "desktop-day2.png"))
+    # 步行时间按 4 km/h 和真实路线长度重算（鱼市场→Broadway 1434 m ≈ 22 分钟；Argyle 上坡 518 m ×1.25 ≈ 10 分钟）
+    page.evaluate("__app.go('day1')"); wait_idle(page, 600)
+    t1 = page.inner_text("#content")
+    page.evaluate("__app.go('day2')"); wait_idle(page, 600)
+    t2 = page.inner_text("#content")
+    check("[桌面] 步行时间按 4 km/h 重算", "约 22 分钟 · 1.4 km" in t1 and "约 10 分钟 · 520 m · 上坡" in t2 and "约 12 分钟 · 850 m" not in t1)
     # 时间线点地点 → 地图定位 + 弹窗
     page.click(".stop[data-p='bstairs']"); page.wait_for_timeout(1300)
     pi = popup_inside(page)

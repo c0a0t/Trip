@@ -9,3 +9,5 @@ tests/last-run-site.txt
 tests/last-run-live.txt
 screenshots/before-highlight-*.png
 screenshots/after-highlight-*.png
+screenshots/before-popup-*.png
+screenshots/after-popup-*.png
