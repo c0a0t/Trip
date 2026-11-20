@@ -25,7 +25,8 @@ nav.tabs::-webkit-scrollbar{display:none}
 .leaflet-container{font:inherit}
 .leaflet-bar a.ctl{font-size:17px;line-height:30px;font-weight:600;color:var(--ink)}
 .leaflet-touch .leaflet-bar a.ctl{line-height:30px}
-.ctl-exp{display:none !important}
+/* 地图和行程之间的拖动条（只在手机布局显示） */
+.resizer{display:none}
 .legend{position:absolute;left:10px;top:10px;z-index:900;transition:opacity .15s;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:11.5px;display:flex;flex-wrap:wrap;gap:3px 11px;max-width:calc(100% - 70px);pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .mapwrap.popopen .legend{opacity:0;visibility:hidden} /* 弹窗打开时收起图例，小屏上不会挡住弹窗 */
 .legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
@@ -124,9 +125,14 @@ nav.tabs::-webkit-scrollbar{display:none}
   header.head{order:1} nav.tabs{order:2} .mapwrap{order:3} .content{order:4}
   header.head{border-right:0;padding:12px 14px 4px}
   nav.tabs{position:sticky;top:0;border-right:0;padding:8px 12px;padding-left:max(12px,env(safe-area-inset-left))}
-  .mapwrap{position:sticky;top:var(--tabsH);height:var(--mapH);z-index:1000;border-bottom:1px solid var(--line);transition:height .22s ease}
-  .mapwrap.big{--mapH:74svh;height:74svh}
-  .ctl-exp{display:block !important}
+  .mapwrap{position:sticky;top:var(--tabsH);height:var(--mapH);z-index:1000;transition:height .22s ease}
+  .mapwrap.resizing{transition:none}
+  #map{bottom:22px}
+  .resizer{display:flex;position:absolute;left:0;right:0;bottom:0;height:22px;align-items:center;justify-content:center;z-index:1001;
+    background:var(--bg);border-top:1px solid var(--line);border-bottom:1px solid var(--line);cursor:row-resize;touch-action:none;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  .resizer span{width:44px;height:5px;border-radius:3px;background:#C9C3B8;transition:background .15s,width .15s}
+  .mapwrap.resizing .resizer span{background:#8E877A;width:60px}
   .leg .nav{padding:3px 10px;font-size:12.5px}
   .tab{padding:6px 12px}
   .stop{padding:10px 6px}

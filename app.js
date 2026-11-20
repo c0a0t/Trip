@@ -52,11 +52,10 @@ L.control.zoom({position:"topright",zoomInTitle:"放大",zoomOutTitle:"缩小"})
 // 自定义按钮：显示当天全部 / 展开地图（手机）
 const Btns=L.Control.extend({options:{position:"topright"},onAdd(){
   const c=L.DomUtil.create("div","leaflet-bar");
-  c.innerHTML=`<a href="#" class="ctl ctl-fit" title="显示当天全部" aria-label="显示当天全部" role="button">⤢</a><a href="#" class="ctl ctl-base" title="底图：淡化 / 原色" aria-label="切换底图颜色" role="button">◐</a><a href="#" class="ctl ctl-exp" title="展开/收起地图" aria-label="展开地图" role="button">⇕</a>`;
+  c.innerHTML=`<a href="#" class="ctl ctl-fit" title="显示当天全部" aria-label="显示当天全部" role="button">⤢</a><a href="#" class="ctl ctl-base" title="底图：淡化 / 原色" aria-label="切换底图颜色" role="button">◐</a>`;
   L.DomEvent.disableClickPropagation(c);
   c.querySelector(".ctl-fit").onclick=e=>{e.preventDefault();fitDay()};
   c.querySelector(".ctl-base").onclick=e=>{e.preventDefault();const v=mapwrap.classList.toggle("vivid");lsSet("basemap",v?"vivid":"soft")};
-  c.querySelector(".ctl-exp").onclick=e=>{e.preventDefault();toggleBig()};
   return c}});
 new Btns().addTo(map);
 
@@ -185,7 +184,7 @@ map.on("mousemove",e=>{if(coarse)return;cancelAnimationFrame(hoverRaf);hoverRaf=
 map.on("mouseout dragstart zoomstart",hideTip);
 
 /* ---------- 弹窗（autoPan + 宽度随地图，保证不超出地图） ---------- */
-function popOpts(){const w=mapwrap.clientWidth;return{maxWidth:Math.max(160,Math.min(270,w-70)),minWidth:Math.min(170,w-90),autoPan:true,keepInView:true,
+function popOpts(){const w=mapwrap.clientWidth;return{maxWidth:Math.max(160,Math.min(270,w-70)),minWidth:Math.min(170,w-90),autoPan:true,keepInView:false,/* 只在弹窗打开时挪一次，之后可以自由拖走地图 */
   autoPanPaddingTopLeft:L.point(10,isNarrow()?12:56),autoPanPaddingBottomRight:L.point(10,24),closeButton:true,className:"pp"}}
 function openStopPop(d,p){
   const pl=P[p];const items=visibleItems(d).filter(i=>!i.leg&&i.p===p);const it=items[0];
@@ -228,6 +227,7 @@ function flyView(b,o){
   const c=map.unproject(map.project(b.getCenter(),z).add(off),z);
   const far=Math.abs(z-map.getZoom())>.01||map.latLngToContainerPoint(c).distanceTo(sz.divideBy(2))>2;
   if(!far){map.fire("moveend");return}
+  if(Math.abs(z-map.getZoom())<.01){map.panTo(c,{animate:true,duration:.45});return} // 同一缩放只平移，不做 flyTo 的“先缩小再放大”
   try{map.flyTo(c,z,{duration:.55})}catch(e){map.setView(c,z,{animate:false})}
 }
 function flyPoint(ll,z){
@@ -244,12 +244,35 @@ function fitDay(){
   visibleItems(d).forEach(i=>{if(i.leg)legPath(i).forEach(p=>all.push(p));else all.push(P[i.p].ll)});
   fitLL(all,{maxZoom:17,top:isNarrow()?20:30});
 }
-function toggleBig(){
-  mapwrap.classList.toggle("big");const big=mapwrap.classList.contains("big");
-  const b=document.querySelector(".ctl-exp");b.textContent=big?"⇡":"⇕";b.setAttribute("aria-label",big?"收起地图":"展开地图");
-  setTimeout(()=>{map.invalidateSize();setMapH();},260);
+/* ---------- 手机：地图和行程之间的拖动条，上下拖调地图高度；轻点在默认/大半屏之间切换 ---------- */
+const resizer=document.getElementById("resizer");
+let rz=null,rzRaf=0;
+function setMapHeight(px,save){
+  // 最高到拖动条仍留在屏幕里（页面在顶部时标题还占着位置，地图的顶边更低）
+  const top=Math.max(tabs.offsetHeight,mapwrap.getBoundingClientRect().top);
+  const min=160,max=Math.max(min,window.innerHeight-top-40);
+  const h=Math.round(Math.min(max,Math.max(min,px)));
+  document.documentElement.style.setProperty("--mapH",h+"px"); // 同时用于时间线条目的 scroll-margin
+  cancelAnimationFrame(rzRaf);rzRaf=requestAnimationFrame(()=>map.invalidateSize({pan:false}));
+  if(save)lsSet("mapH",(h/window.innerHeight).toFixed(3));
 }
-function setMapH(){document.documentElement.style.setProperty("--mapHpx",mapwrap.offsetHeight+"px")}
+function rzStart(y){rz={y0:y,h0:mapwrap.offsetHeight,moved:false};mapwrap.classList.add("resizing");hideTip()}
+function rzMove(y){if(!rz)return;const dy=y-rz.y0;if(Math.abs(dy)>4)rz.moved=true;if(rz.moved)setMapHeight(rz.h0+dy)}
+function rzEnd(){
+  if(!rz)return;const r=rz;rz=null;mapwrap.classList.remove("resizing");
+  if(!r.moved)setMapHeight(window.innerHeight*(mapwrap.offsetHeight<window.innerHeight*.6?.74:.46),true);
+  else setMapHeight(mapwrap.offsetHeight,true);
+  setTimeout(()=>map.invalidateSize({pan:false}),260);
+}
+// 用触摸事件 + 鼠标事件（iOS / 安卓 / 桌面都支持）
+resizer.addEventListener("touchstart",e=>{if(e.cancelable)e.preventDefault();e.stopPropagation();rzStart(e.touches[0].clientY)},{passive:false});
+document.addEventListener("touchmove",e=>{if(!rz)return;if(e.cancelable)e.preventDefault();rzMove(e.touches[0].clientY)},{passive:false});
+document.addEventListener("touchend",()=>rzEnd());
+document.addEventListener("touchcancel",()=>rzEnd());
+resizer.addEventListener("mousedown",e=>{e.preventDefault();rzStart(e.clientY)});
+document.addEventListener("mousemove",e=>{if(rz)rzMove(e.clientY)});
+document.addEventListener("mouseup",()=>rzEnd());
+function restoreMapH(){const f=parseFloat(lsGet("mapH"));if(isNarrow()&&f>0)setMapHeight(window.innerHeight*f)}
 
 /* ======================= Google Maps 链接（同原页面） ======================= */
 const enc=encodeURIComponent;
@@ -302,8 +325,8 @@ function renderLegend(){
   const used=new Set(legsOf(dayById(state.day)).map(l=>l.mode));
   lg.innerHTML=Object.entries(MODES).filter(([k])=>used.has(k)).map(([k,m])=>`<span>${sw(m,k)}${m.n}</span>`).join("");
 }
-function go(id,push=true){
-  state.day=id;state.sel=null;map.closePopup();renderTabs();renderContent();render();renderLegend();fitDay();
+function go(id,push=true,keepView=false){
+  state.day=id;state.sel=null;map.closePopup();renderTabs();renderContent();render();renderLegend();if(!keepView)fitDay();
   if(push){try{history.replaceState(null,"",id?"#"+id:"#overview")}catch(e){}}
   content.scrollTop=0;if(isNarrow())window.scrollTo({top:0});
 }
@@ -322,7 +345,7 @@ function renderContent(){
       h+=`<li class="leg" data-i="${idx}"><div></div><div class="rail"><i style="border-left-color:${m.c};border-left-style:${it.mode==="walk"?"dotted":"solid"}"></i></div><div class="body"><span class="mode">${m.ic} ${m.n}</span><span>${it.dur}</span>${it.note?`<span>· ${it.note}</span>`:""}${km}${NO_NAV.has(it.to)?"":`<a class="nav" href="${gmDir(it.from,it.to,it.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}${it.alt?`<span class="alt">替代：${it.alt}</span>`:""}</div></li>`;
     }else{const pl=P[it.p];
       const badge=pl.home?`<span class="badge" style="background:#1F2328">家</span>`:`<span class="badge" style="background:${it.extra?"#9AA0A6":d.color}">${num[it.p]}</span>`;
-      h+=`<li class="stop" data-p="${it.p}"><div class="time">${it.t}</div>${badge}<div><h3>${it.h}${it.opt?'<span class="opt">可选</span>':""}</h3><div style="font-size:12px;color:#6B6F76">${pl.n}</div>${it.d?`<p>${it.d}</p>`:""}${it.tip?`<span class="tipline">${it.tip}</span>`:""}</div></li>`;
+      h+=`<li class="stop" data-p="${it.p}" data-i="${idx}"><div class="time">${it.t}</div>${badge}<div><h3>${it.h}${it.opt?'<span class="opt">可选</span>':""}</h3><div style="font-size:12px;color:#6B6F76">${pl.n}</div>${it.d?`<p>${it.d}</p>`:""}${it.tip?`<span class="tipline">${it.tip}</span>`:""}</div></li>`;
     }
   });
   h+=`</ol>`;
@@ -330,12 +353,15 @@ function renderContent(){
   h+=`<div style="display:flex;justify-content:space-between;margin-top:16px">${i>0?`<a href="#" data-go="${DAYS[i-1].id}">← ${DAYS[i-1].date}</a>`:"<span></span>"}${i<DAYS.length-1?`<a href="#" data-go="${DAYS[i+1].id}">${DAYS[i+1].date} →</a>`:`<a href="#" data-go="">回总览</a>`}</div>`;
   content.innerHTML=h;
   content.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.variant[d.id]=b.dataset.v;state.sel=null;map.closePopup();renderContent();render();renderLegend();fitDay()});
-  content.querySelectorAll(".stop").forEach(li=>li.onclick=()=>selectStop(d.id,li.dataset.p,false));
+  content.querySelectorAll(".stop").forEach(li=>li.onclick=()=>selectStop(d.id,li.dataset.p,false,+li.dataset.i));
   const vis=visibleItems(d);
   content.querySelectorAll(".leg").forEach(li=>li.addEventListener("click",e=>{if(e.target.closest("a"))return;
     const lg=vis[+li.dataset.i];const x=legLines.find(o=>o.lg===lg);if(!x)return;
     content.querySelectorAll(".leg.sel,.stop.sel").forEach(e=>e.classList.remove("sel"));
-    fitLL(x.ll,{maxZoom:17});
+    map.closePopup();
+    // 保持当前缩放，只平移到这段路线；这段在当前比例下放不下时才缩小，绝不放大
+    const pad=isNarrow()?L.point(20,24):L.point(56,56);
+    flyView(L.latLngBounds(x.ll),{paddingTopLeft:pad,paddingBottomRight:pad,maxZoom:map.getZoom()});
     map.once("moveend",()=>{openLegPop(x);li.classList.add("sel")});
     scrollMapIntoView();
   }));
@@ -346,16 +372,37 @@ function applySel(){
   markers.forEach(x=>{const e=x.el&&x.el.querySelector(".mk");if(!e)return;e.classList.toggle("sel",x.p===state.sel);e.classList.toggle("dim",!!state.sel&&x.p!==state.sel)});
   markers.forEach(x=>x.m.setZIndexOffset(x.p===state.sel?1000:(P[x.p].home?500:200)));
 }
-function selectStop(dayId,p,fromMap){
-  if(state.day!==dayId)go(dayId);
+// 去这个目的地的路段：从时间线点的（idx）取它前面紧挨着的那段；从地图点的取当天所有到达这里的路段
+function incomingLegs(d,p,idx){
+  const vis=visibleItems(d),q=P[p].sub||p;
+  if(idx!=null){for(let i=idx-1;i>=0;i--)if(vis[i].leg)return vis[i].to===q?[vis[i]]:[];return []}
+  return vis.filter(i=>i.leg&&i.to===q);
+}
+function showIncoming(d,inc){
+  if(!inc.length)return;
+  legLines.forEach(o=>legOpacity(o,inc.includes(o.lg)));
+  legLines.filter(o=>inc.includes(o.lg)).forEach(o=>{o.halo.bringToFront();o.casing.bringToFront();o.line.bringToFront()});
+  const vis=visibleItems(d);
+  inc.forEach(lg=>{const li=content.querySelector(`.leg[data-i="${vis.indexOf(lg)}"]`);if(li)li.classList.add("sel")});
+}
+// 只平移、不改缩放；目的地放在中心偏下，上方给弹窗留位置
+function panKeep(ll,below){
+  const sz=map.getSize();
+  if(!sz.x){map.fire("moveend");return}
+  const c=map.unproject(map.project(ll).subtract([0,Math.round(sz.y*(below??.18))]));
+  if(map.latLngToContainerPoint(c).distanceTo(sz.divideBy(2))<2){map.fire("moveend");return}
+  map.panTo(c,{animate:true,duration:.45});
+}
+function selectStop(dayId,p,fromMap,idx){
+  if(state.day!==dayId)go(dayId,true,true); // 换到那一天，但保持当前缩放
   state.sel=p;applySel();
-  content.querySelectorAll(".stop").forEach(li=>li.classList.toggle("sel",li.dataset.p===p));
-  content.querySelectorAll(".leg.sel").forEach(e=>e.classList.remove("sel"));
+  content.querySelectorAll(".stop").forEach(li=>li.classList.toggle("sel",idx!=null?+li.dataset.i===idx:li.dataset.p===p));
   const d=dayById(dayId);
-  const z=Math.max(map.getZoom(),P[p].sub||p==="bluemtn"?14:16);
-  map.closePopup();
+  map.closePopup(); // 会先把之前的高亮复原
+  content.querySelectorAll(".leg.sel").forEach(e=>e.classList.remove("sel"));
+  showIncoming(d,incomingLegs(d,p,idx));
   map.once("moveend",()=>{openStopPop(d,p);declutter()});
-  flyPoint(P[p].ll,z);
+  panKeep(P[p].ll);
   if(fromMap){const li=content.querySelector(`.stop[data-p="${p}"]`)||content.querySelector(`.stop[data-p="${P[p].sub}"]`);
     if(li){if(!isNarrow())li.scrollIntoView({block:"center",behavior:"smooth"});
       else{const top=li.getBoundingClientRect().top+window.scrollY-(tabs.offsetHeight+mapwrap.offsetHeight+10);window.scrollTo({top,behavior:"smooth"})}}}
@@ -398,10 +445,11 @@ function renderOverview(){
 /* ======================= 启动 ======================= */
 function setTabsH(){document.documentElement.style.setProperty("--tabsH",tabs.offsetHeight+"px")}
 let lastW=window.innerWidth;
-window.addEventListener("resize",()=>{setTabsH();map.invalidateSize();if(Math.abs(window.innerWidth-lastW)>2){lastW=window.innerWidth;fitDay()}});
+window.addEventListener("resize",()=>{setTabsH();if(Math.abs(window.innerWidth-lastW)>2)restoreMapH();map.invalidateSize();if(Math.abs(window.innerWidth-lastW)>2){lastW=window.innerWidth;fitDay()}});
 const h0=(location.hash||"").slice(1);
 go(dayById(h0)?h0:null,false);
 setTabsH(); // 日期标签渲染之后再量高度，地图才会正好吸在日期栏下面
+restoreMapH(); // 手机上恢复上次拖好的地图高度
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(setTabsH);
 window.addEventListener("hashchange",()=>{const h=(location.hash||"").slice(1);if((dayById(h)?h:null)!==state.day)go(dayById(h)?h:null,false)});
 window.__app={map,state,ROUTES,GEO,go,selectStop,get markers(){return markers},get legLines(){return legLines}}; // 测试用

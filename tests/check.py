@@ -107,9 +107,10 @@ def desktop(pw):
           page.evaluate("__app.state.sel"))
     # 点路段（时间线）→ 显示交通方式
     page.evaluate("__app.go('day2')"); wait_idle(page, 1000)
+    z0 = page.evaluate("__app.map.getZoom()")
     page.click(".leg:has-text('渡轮') .mode"); page.wait_for_timeout(1400)
-    pi = popup_inside(page)
-    check("[桌面] 时间线点路段 → 地图缩放到该段并弹出交通方式", pi and "渡轮" in pi["text"] and pi["inside"], str(pi))
+    pi = popup_inside(page); z1 = page.evaluate("__app.map.getZoom()")
+    check("[桌面] 时间线点路段 → 平移到该段（不放大）并弹出交通方式", pi and "渡轮" in pi["text"] and pi["inside"] and z1 <= z0 + 1e-6, f"zoom {z0}->{z1} {pi}")
     page.screenshot(path=str(OUT / "desktop-leg-popup.png"))
     # 地图上点路段
     page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
@@ -218,19 +219,57 @@ def mobile(pw, key):
         pi = popup_inside(page)
         check(f"[{tag}] {p} 弹窗在地图范围内", pi and pi["inside"], str(pi))
     shot("popup")
-    # 时间线点地点（手机）
+    # 时间线点地点（手机）：只平移不缩放；高亮这个点和去它的路段；之后能自由拖走地图
+    page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
+    page.evaluate("__app.map.setZoom(14,{animate:false})"); page.wait_for_timeout(500)
     page.evaluate("window.scrollTo(0, 700)"); page.wait_for_timeout(300)
+    z0 = page.evaluate("__app.map.getZoom()")
     page.locator(".stop[data-p='westfield']").tap(); page.wait_for_timeout(1400)
-    check(f"[{tag}] 时间线点地点 → 地图定位并弹窗", page.evaluate("__app.state.sel") == "westfield" and popup_inside(page) is not None)
-    # 展开地图
+    z1 = page.evaluate("__app.map.getZoom()")
+    check(f"[{tag}] 时间线点地点 → 平移过去、缩放不变、弹窗", page.evaluate("__app.state.sel") == "westfield" and popup_inside(page) is not None and abs(z1 - z0) < 1e-6,
+          f"zoom {z0}->{z1}")
+    hl = page.evaluate("""() => __app.legLines.map(o => ({k:`${o.lg.from}>${o.lg.to}`, op:o.line.options.opacity}))""")
+    on = [x["k"] for x in hl if x["op"] >= 0.99]; off = [x for x in hl if x["op"] < 0.5]
+    check(f"[{tag}] 高亮去这个地点的路段（其余变淡）", on == ["hydepark>westfield"] and len(off) == len(hl) - 1, f"高亮 {on}")
+    sel_ok = page.evaluate("document.querySelector('.leg.sel') && document.querySelector('.leg.sel').innerText.includes('步行')")
+    check(f"[{tag}] 时间线里对应路段同时标出", bool(sel_ok))
+    shot("stop-selected")
+    # 选中后拖走地图，不应被拉回到选中的地点
+    box = page.locator("#map").bounding_box(); cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] * 0.85  # 从弹窗下方开始拖
+    p0 = page.evaluate("(()=>{const p=__app.map.latLngToContainerPoint(P.westfield.ll);return [p.x,p.y]})()")
+    fingers.start([(cx, cy)])
+    for i in range(1, 13): fingers.move([(cx - 12 * i, cy - 4 * i)]); page.wait_for_timeout(16)
+    fingers.end(); page.wait_for_timeout(1200)
+    p1 = page.evaluate("(()=>{const p=__app.map.latLngToContainerPoint(P.westfield.ll);return [p.x,p.y]})()")
+    check(f"[{tag}] 选中后可以自由拖动地图（不会弹回）", p1[0] < p0[0] - 100, f"标记 x {p0[0]:.0f} -> {p1[0]:.0f}")
+    page.evaluate("__app.map.closePopup()")
+    # 地图和行程之间的拖动条
     page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(300)
-    h0 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
-    page.locator(".ctl-exp").tap(); page.wait_for_timeout(700)
-    h1 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
-    check(f"[{tag}] 展开地图到大半屏", h1 > VH * 0.68 and h1 > h0 + 150, f"{h0}px -> {h1}px")
-    wait_idle(page, 600)
-    shot("expanded")
-    page.locator(".ctl-exp").tap(); page.wait_for_timeout(600)
+    def handle_y(): b = page.locator("#resizer").bounding_box(); return b["x"] + b["width"] / 2, b["y"] + b["height"] / 2
+    h0 = page.evaluate("document.getElementById('mapwrap').offsetHeight"); z0 = page.evaluate("__app.map.getZoom()")
+    hx, hy = handle_y(); fingers.start([(hx, hy)])
+    for i in range(1, 11): fingers.move([(hx, hy + 18 * i)]); page.wait_for_timeout(16)
+    fingers.end(); page.wait_for_timeout(500)
+    h1 = page.evaluate("document.getElementById('mapwrap').offsetHeight"); y1 = page.evaluate("scrollY")
+    hb = page.locator("#resizer").bounding_box()
+    check(f"[{tag}] 往下拖拖动条 → 地图变高、页面不滚动、拖动条仍在屏幕内", h1 > h0 + 100 and y1 == 0 and hb["y"] + hb["height"] <= VH,
+          f"{h0}px -> {h1}px, scrollY {y1}, 拖动条底边 {hb['y'] + hb['height']:.0f}/{VH}")
+    wait_idle(page, 600); shot("expanded")
+    hx, hy = handle_y(); fingers.start([(hx, hy)])
+    for i in range(1, 11): fingers.move([(hx, hy - 26 * i)]); page.wait_for_timeout(16)
+    fingers.end(); page.wait_for_timeout(500)
+    h2 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
+    check(f"[{tag}] 往上拖拖动条 → 地图变矮（下面行程变多）", h2 < h1 - 200 and h2 >= 160, f"{h1}px -> {h2}px")
+    shot("collapsed")
+    page.reload(); page.wait_for_function("window.__app"); page.wait_for_timeout(1200)
+    h3 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
+    check(f"[{tag}] 刷新后记住拖好的高度", abs(h3 - h2) < 4, f"{h2}px / 刷新后 {h3}px")
+    hx, hy = handle_y(); page.touchscreen.tap(hx, hy); page.wait_for_timeout(600)
+    h4 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
+    check(f"[{tag}] 轻点拖动条 → 切到大半屏", h4 > VH * 0.66, f"{h3}px -> {h4}px")
+    hx, hy = handle_y(); page.touchscreen.tap(hx, hy); page.wait_for_timeout(600)
+    h5 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
+    check(f"[{tag}] 再轻点 → 回到默认高度", abs(h5 - VH * 0.46) < 6, f"{h4}px -> {h5}px")
     # 地图上点路段
     page.evaluate("__app.go('day3')"); wait_idle(page, 1300)
     mid = page.evaluate("""() => { const x=__app.legLines.find(o=>o.lg.mode==='ferry'); const m=__app.map;
