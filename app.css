@@ -32,6 +32,10 @@ nav.tabs::-webkit-scrollbar{display:none}
 .legend svg{display:block}
 #tip{position:absolute;z-index:1000;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;padding:4px 8px;border-radius:6px;display:none;white-space:nowrap;max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis}
 .leaflet-control-attribution{font-size:10.5px}
+/* 底图淡化：路线和标记用原色画在上面，对比更强；.vivid 切回原色 */
+.basemap{filter:saturate(.28) contrast(.86) brightness(1.07);transition:filter .2s}
+.mapwrap.vivid .basemap{filter:none}
+.mapwrap.vivid .ctl-base{background:#F1EEE8}
 
 /* 标记 */
 .mk{position:relative;width:26px;height:26px}

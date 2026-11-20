@@ -40,17 +40,22 @@ const map=L.map(mapEl,{
   zoomSnap:.25,zoomDelta:1,wheelPxPerZoomLevel:90,tapTolerance:12,bounceAtZoomLimits:false
 }).setView([-33.872,151.205],13);
 map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
+// 底图默认淡化（降低饱和度和对比度），让路线更醒目；右上角 ◐ 按钮可切回原色，选择记在本机
+const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+mapwrap.classList.toggle("vivid",lsGet("basemap")==="vivid");
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
-  maxZoom:19,
+  maxZoom:19,className:"basemap",
   attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · 路线 <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">FOSSGIS OSRM</a>'
 }).addTo(map);
 L.control.zoom({position:"topright",zoomInTitle:"放大",zoomOutTitle:"缩小"}).addTo(map);
 // 自定义按钮：显示当天全部 / 展开地图（手机）
 const Btns=L.Control.extend({options:{position:"topright"},onAdd(){
   const c=L.DomUtil.create("div","leaflet-bar");
-  c.innerHTML=`<a href="#" class="ctl ctl-fit" title="显示当天全部" aria-label="显示当天全部" role="button">⤢</a><a href="#" class="ctl ctl-exp" title="展开/收起地图" aria-label="展开地图" role="button">⇕</a>`;
+  c.innerHTML=`<a href="#" class="ctl ctl-fit" title="显示当天全部" aria-label="显示当天全部" role="button">⤢</a><a href="#" class="ctl ctl-base" title="底图：淡化 / 原色" aria-label="切换底图颜色" role="button">◐</a><a href="#" class="ctl ctl-exp" title="展开/收起地图" aria-label="展开地图" role="button">⇕</a>`;
   L.DomEvent.disableClickPropagation(c);
   c.querySelector(".ctl-fit").onclick=e=>{e.preventDefault();fitDay()};
+  c.querySelector(".ctl-base").onclick=e=>{e.preventDefault();const v=mapwrap.classList.toggle("vivid");lsSet("basemap",v?"vivid":"soft")};
   c.querySelector(".ctl-exp").onclick=e=>{e.preventDefault();toggleBig()};
   return c}});
 new Btns().addTo(map);
@@ -64,6 +69,14 @@ let legLines=[];  // {lg, d, latlngs, line, casing}
 mapwrap.addEventListener("touchmove",e=>{if(e.cancelable)e.preventDefault()},{passive:false});
 mapwrap.addEventListener("touchstart",e=>{if(e.touches.length>1&&e.cancelable)e.preventDefault()},{passive:false});
 
+// 地图上的线型（比 data.js 里的 MODES 更粗；虚线间距按粗细放大）。图例用同一套
+const LINE={walk:{w:6,dash:"0.1 11"},taxi:{w:5.5,dash:"12 9"},coach:{w:5.5,dash:"14 9"},bus:{w:6},lr:{w:6},train:{w:6},ferry:{w:6}};
+const lineStyle=mode=>({w:(LINE[mode]||{}).w||6,dash:(LINE[mode]||{}).dash||null});
+const BASE={halo:.2,casing:.95};
+function legOpacity(x,on){ // on: true 高亮 / false 压暗 / undefined 恢复
+  const k=on===false?.25:1;
+  x.line.setStyle({opacity:(x.schem?.65:1)*k});x.casing.setStyle({opacity:BASE.casing*k});x.halo.setStyle({opacity:on===true?.35:BASE.halo*k});
+}
 function markerHTML(cls,bg,txt,label){
   return `<div class="mk ${cls}"><div class="pin" style="background:${bg}">${txt}</div>${label?`<span class="lbl">${label}</span>`:""}</div>`;
 }
@@ -73,12 +86,14 @@ function render(){
   const days=single?[dayById(state.day)]:DAYS;
   days.forEach(d=>{
     legsOf(d).forEach(lg=>{
-      const m=MODES[lg.mode],info=legInfo(lg),ll=legPath(lg),schem=info&&info.kind==="schematic";
-      let casing=null;
-      if(single) casing=L.polyline(ll,{color:"#fff",weight:m.w+4,opacity:.9,interactive:false,lineCap:"round",lineJoin:"round"}).addTo(routeLayer);
-      const line=L.polyline(ll,{color:single?m.c:d.color,weight:single?m.w+.5:3,opacity:single?(schem?.6:1):.8,
-        dashArray:schem?"2 9":(m.dash||null),lineCap:"round",lineJoin:"round",interactive:false}).addTo(routeLayer);
-      legLines.push({lg,d,ll,line,casing});
+      const m=MODES[lg.mode],s=lineStyle(lg.mode),info=legInfo(lg),ll=legPath(lg),schem=info&&info.kind==="schematic";
+      const w=single?s.w:4;
+      const o={interactive:false,lineCap:"round",lineJoin:"round"};
+      // 三层：淡深色外晕 → 白色描边 → 彩色路线。压在任何颜色的街道/水面上都清楚
+      const halo=L.polyline(ll,{...o,color:"#1F2328",weight:w+(single?9:6),opacity:BASE.halo}).addTo(routeLayer);
+      const casing=L.polyline(ll,{...o,color:"#fff",weight:w+(single?5:3.5),opacity:BASE.casing}).addTo(routeLayer);
+      const line=L.polyline(ll,{...o,color:single?m.c:d.color,weight:w,opacity:schem?.65:1,dashArray:schem?"1 11":(single?s.dash:null)}).addTo(routeLayer);
+      legLines.push({lg,d,ll,line,casing,halo,schem});
       if(single&&lg.mode!=="walk"){
         const mid=midpoint(ll);
         L.marker(mid,{interactive:false,keyboard:false,icon:L.divIcon({className:"",iconSize:[24,24],iconAnchor:[12,12],html:`<div class="modeic" style="border-color:${m.c}">${m.ic}</div>`})}).addTo(iconLayer);
@@ -188,11 +203,11 @@ function openLegPop(x,at){
 }
 let hlTimer=0;
 function highlightLeg(x){
-  legLines.forEach(o=>o.line.setStyle({opacity:o===x?1:(state.day?.35:.25)}));
-  x.line.bringToFront();clearTimeout(hlTimer);
+  legLines.forEach(o=>legOpacity(o,o===x));
+  x.halo.bringToFront();x.casing.bringToFront();x.line.bringToFront();clearTimeout(hlTimer);
 }
 map.on("popupopen",()=>mapwrap.classList.add("popopen"));
-map.on("popupclose",()=>{mapwrap.classList.remove("popopen");legLines.forEach(o=>{const schem=(legInfo(o.lg)||{}).kind==="schematic";o.line.setStyle({opacity:state.day?(schem?.6:1):.8})});
+map.on("popupclose",()=>{mapwrap.classList.remove("popopen");legLines.forEach(o=>legOpacity(o));
   document.querySelectorAll(".leg.sel").forEach(e=>e.classList.remove("sel"))});
 const fmtDist=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+" km":Math.round(m/10)*10+" m";
 
@@ -281,10 +296,11 @@ function renderTabs(){
 }
 function renderLegend(){
   const lg=document.getElementById("legend");
-  const sw=m=>`<svg width="26" height="8"><line x1="2" y1="4" x2="24" y2="4" stroke="${m.c}" stroke-width="3.5" stroke-dasharray="${m.dash}" stroke-linecap="round"/></svg>`;
+  const sw=(m,k)=>{const d=k==="walk"?"0.1 7":k==="taxi"||k==="coach"?"8 5":"";
+    return `<svg width="28" height="10"><line x1="3" y1="5" x2="25" y2="5" stroke="${m.c}" stroke-width="4" stroke-dasharray="${d}" stroke-linecap="round"/></svg>`};
   if(!state.day){lg.innerHTML=DAYS.map(d=>`<span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="${d.color}"/></svg>${d.date}</span>`).join("");return}
   const used=new Set(legsOf(dayById(state.day)).map(l=>l.mode));
-  lg.innerHTML=Object.entries(MODES).filter(([k])=>used.has(k)).map(([k,m])=>`<span>${sw(m)}${m.n}</span>`).join("");
+  lg.innerHTML=Object.entries(MODES).filter(([k])=>used.has(k)).map(([k,m])=>`<span>${sw(m,k)}${m.n}</span>`).join("");
 }
 function go(id,push=true){
   state.day=id;state.sel=null;map.closePopup();renderTabs();renderContent();render();renderLegend();fitDay();
