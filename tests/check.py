@@ -148,7 +148,7 @@ def desktop(pw):
     with page.expect_download() as dl:
         page.click("#icsbtn")
     d = dl.value; body = open(d.path(), encoding="utf-8").read()
-    check("[桌面] 点“加到手机日历”下载 sydney-trip.ics", d.suggested_filename == "sydney-trip.ics" and body.count("BEGIN:VEVENT") == 6, d.suggested_filename)
+    check("[桌面] 点“加到手机日历”下载 trip-calendar.ics", d.suggested_filename == "trip-calendar.ics" and body.count("BEGIN:VEVENT") == 10, d.suggested_filename)
     common_checks(page, "桌面")
     page.evaluate("__app.go(null)"); wait_idle(page, 800)
     errs = [l for l in logs if not l.startswith("warning")]
@@ -196,10 +196,13 @@ def calendar_checks(page, tag, shot):
         ag:[...document.querySelectorAll('.ag')].map(a=>[...a.querySelectorAll('li')].map(l=>l.innerText.replace(/\\s+/g,' '))),
         head:document.querySelector('.cal .mh').innerText})""")
     check(f"[{tag}] 日历标签：切过去、地址 #calendar", st["view"] == "cal" and st["day"] is None and st["hash"] == "#calendar" and st["on"] == "日历", str({k: st[k] for k in ("view", "hash", "on")}))
-    check(f"[{tag}] 日历：2026 年 11 月，24–29 日 6 格有简称", "2026 年 11 月" in st["head"] and len(st["cells"]) == 6
-          and st["cells"][0].startswith("24") and st["cells"][-1].startswith("29") and all(len(c) > 3 for c in st["cells"]), str(st["cells"]))
-    check(f"[{tag}] 每日简表 6 天，每天 3–5 条带时间", len(st["ag"]) == 6 and all(3 <= len(a) <= 5 for a in st["ag"])
-          and st["ag"][0][0] == "12:00 抵达住处" and "16:15 出园坐船回" in st["ag"][2] and "11:00 取行李去机场" in st["ag"][5], str(st["ag"]))
+    cal_days = page.evaluate("[...document.querySelectorAll('.cal .c[data-iso]')].map(c=>c.dataset.iso)")
+    check(f"[{tag}] 日历：2026 年 11–12 月，11/16–12/6 三周", "2026 年 11–12 月" in st["head"] and cal_days[:1] == ["2026-11-16"] and cal_days[-1:] == ["2026-12-06"] and len(cal_days) == 21, f"{st['head']} {cal_days[:1]}…{cal_days[-1:]} n={len(cal_days)}")
+    check(f"[{tag}] 悉尼 6 格 + 凯恩斯 3 格有简称", len(st["cells"]) == 9 and st["cells"][0] == "24 落地 夜景" and st["cells"][5] == "29 退房 凯恩斯"
+          and st["cells"][6:] == ["30 大堡礁", "12/1 雨林 小火车", "2 返程 去阿德"], str(st["cells"]))
+    check(f"[{tag}] 每日简表：悉尼 6 天每天 3–5 条带时间，凯恩斯 4 天用原话", len(st["ag"]) == 10 and all(3 <= len(a) <= 5 for a in st["ag"][:6])
+          and st["ag"][0][0] == "12:00 抵达住处" and "16:15 出园坐船回" in st["ag"][2] and "11:00 取行李去机场" in st["ag"][5]
+          and st["ag"][6:] == [["当天到达"], ["去大堡礁出海一日游（报一日团玩一天）"], ["去凯恩斯热带雨林小火车（一日团玩一天）"], ["返程，去阿德莱德"]], str(st["ag"]))
     ov = page.evaluate("""() => { const bad=[...document.querySelectorAll('.cal .c, .ag')].filter(e=>e.scrollWidth>e.clientWidth+1).length;
         return {sw:document.documentElement.scrollWidth, vw:innerWidth, bad} }""")
     check(f"[{tag}] 日历不撑出横向滚动、格子文字不溢出", ov["sw"] <= ov["vw"] and ov["bad"] == 0, str(ov))
@@ -212,6 +215,12 @@ def calendar_checks(page, tag, shot):
         ag:(document.querySelector('.ag.today')||{dataset:{}}).dataset.day})""")
     check(f"[{tag}] 出发前显示倒计时、行程中标出今天", s1 == "还有 3 天出发" and s2 == {"s": "今天是第 3 天", "cell": "day3", "ag": "day3"}, f"{s1} | {s2}")
     shot("calendar-today")
+    page.evaluate("window.__TODAY='2026-12-01'; __app.go('cal')"); page.wait_for_timeout(200)
+    s3 = page.evaluate("""() => ({s:document.querySelector('.cal .mh .status').innerText, cell:(document.querySelector('.cal .c.today')||{dataset:{}}).dataset.to,
+        ag:(document.querySelector('.ag.today')||{dataset:{}}).dataset.day})""")
+    page.evaluate("window.__TODAY='2026-12-03'; __app.go('cal')"); page.wait_for_timeout(200)
+    s4 = page.inner_text(".cal .mh .status")
+    check(f"[{tag}] 凯恩斯那几天也标今天、结束后显示已结束", s3 == {"s": "今天是第 8 天", "cell": "cns3", "ag": "cns3"} and s4 == "行程已结束", f"{s3} | {s4}")
     page.evaluate("delete window.__TODAY; __app.go('cal')"); page.wait_for_timeout(200)
     # .ics
     ics = page.evaluate("__app.icsText()")
@@ -221,8 +230,14 @@ def calendar_checks(page, tag, shot):
     starts = [l.split(":")[1] for l in lines if l.startswith("DTSTART")]
     longest = max(len(l.encode("utf-8")) for l in lines)
     unfold = ics.replace(CRLF + " ", "")
-    check(f"[{tag}] .ics：6 个全天日程 11/24–11/29，折行合规", ev == 6 and starts == [f"202611{d}" for d in range(24, 30)] and longest <= 75
-          and "SUMMARY:悉尼 · 动物园" in unfold and "#day3" in unfold and ics.endswith(CRLF), f"ev={ev} starts={starts} longest={longest}")
+    check(f"[{tag}] .ics：悉尼 6 + 凯恩斯 4 个全天日程，折行合规", ev == 10 and starts == [f"202611{d}" for d in range(24, 30)] + ["20261129", "20261130", "20261201", "20261202"] and longest <= 75
+          and "SUMMARY:悉尼 · 动物园" in unfold and "SUMMARY:凯恩斯 · 大堡礁出海一日游" in unfold and "DTEND;VALUE=DATE:20261203" in unfold
+          and "#day3" in unfold and ics.endswith(CRLF), f"ev={ev} starts={starts} longest={longest}")
+    # 凯恩斯格子 → 滚到对应简表卡片
+    page.click(".cal .c.trip[data-to='cns2']"); page.wait_for_timeout(900)
+    fl = page.evaluate("""() => { const e=document.querySelector('.ag.flash'); if(!e) return null; const r=e.getBoundingClientRect();
+        return {id:e.id, vis:r.top < innerHeight && r.bottom > 0, view:__app.state.view} }""")
+    check(f"[{tag}] 点凯恩斯日期 → 滚到那天的简表", fl and fl["id"] == "ag-cns2" and fl["vis"] and fl["view"] == "cal", str(fl))
     # 点日历格子 / 简表卡片 → 去那天
     page.click(".cal .c.trip[data-go='day4']"); wait_idle(page, 700)
     a = page.evaluate("[__app.state.day, __app.state.view, location.hash]")

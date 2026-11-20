@@ -450,71 +450,92 @@ function renderOverview(){
 
 /* ======================= 日历 ======================= */
 const YEAR=2026; // data.js 里只有月/日；11/24 是周二 → 2026 年
-// 每天的简称和简表：时间从行程里取（跟着方案切换走），这里只写短名字
+// 悉尼每天的简称和简表：时间从行程里取（跟着方案切换走），这里只写短名字
 const CAL={
   day1:{tag:["落地","夜景"],keys:[["home","抵达住处","12:00"],["fish","鱼市场午饭"],["dh","达令港 → 海滨步道"],["soh","歌剧院夜景"]]},
   day2:{tag:["歌剧院","大桥"],keys:[["soh","歌剧院中文导览"],["rbg","皇家植物园"],["hpb","军营博物馆"],["bstairs","走海港大桥"],["mpwharf","坐渡轮回"]]},
   day3:{tag:["动物园"],keys:[["cq","码头坐船"],["zootop","正门入园，往下逛"],["zoowharf","出园坐船回","16:15"]]},
   day4:{tag:["蓝山","一日团"],keys:[["meet","集合出发"],["bluemtn","三姐妹峰 + 三种缆车"],["chinatown","唐人街晚饭"]]},
   day5:{tag:["市集","休闲"],keys:[["glebemkt","Glebe 周六市集"],["usyd","悉尼大学"],["happypho","Happy Pho 午饭"],["bondi","Bondi 看海"],["chinatown","唐人街慢慢逛"]]},
-  day6:{tag:["退房","回程"],keys:[["home","收拾、退房","09:00"],["glebepointrd","早午餐"],["home","取行李去机场","11:00"]]}
+  day6:{tag:["退房","凯恩斯"],keys:[["home","收拾、退房","09:00"],["glebepointrd","早午餐"],["home","取行李去机场","11:00"]]}
 };
+// 悉尼之后：凯恩斯（只有日程，没有地图页；lines 是原话）
+const CAIRNS_C="#C8901A";
+const MORE=[
+  {id:"cns1",city:"凯恩斯",date:"11/29",wk:"周日",title:"到达凯恩斯",lines:["当天到达"],noCell:1},
+  {id:"cns2",city:"凯恩斯",date:"11/30",wk:"周一",title:"大堡礁出海一日游",tag:["大堡礁"],lines:["去大堡礁出海一日游（报一日团玩一天）"]},
+  {id:"cns3",city:"凯恩斯",date:"12/1",wk:"周二",title:"热带雨林小火车",tag:["雨林","小火车"],lines:["去凯恩斯热带雨林小火车（一日团玩一天）"]},
+  {id:"cns4",city:"凯恩斯",date:"12/2",wk:"周三",title:"返程，去阿德莱德",tag:["返程","去阿德"],lines:["返程，去阿德莱德"]}
+];
 function calItems(d){
   const vis=visibleItems(d);
   return ((CAL[d.id]||{}).keys||[]).map(([p,lab,t])=>{const it=vis.find(i=>!i.leg&&i.p===p&&(!t||i.t===t));return it&&{t:it.t,lab}}).filter(Boolean);
 }
 const tagOf=d=>CAL[d.id].tag.join(" · ");
-const isoOf=d=>`${YEAR}-${d.date.replace("/","-")}`;
+const pad2=n=>String(n).padStart(2,"0");
+const isoOf=d=>{const [m,dd]=d.date.split("/").map(Number);return `${YEAR}-${pad2(m)}-${pad2(dd)}`};
+const isoUTC=iso=>Date.parse(iso+"T00:00:00Z");
+const isoAdd=(iso,k)=>new Date(isoUTC(iso)+k*864e5).toISOString().slice(0,10);
 function sydToday(){
   if(window.__TODAY)return window.__TODAY; // 测试用
   try{return new Intl.DateTimeFormat("en-CA",{timeZone:"Australia/Sydney",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())}catch(e){return ""}
 }
 function renderCalendar(){
-  const today=sydToday(),byIso={};DAYS.forEach(d=>byIso[isoOf(d)]=d);
-  const [m0]=DAYS[0].date.split("/").map(Number);
-  const first=new Date(YEAR,m0-1,1),nDays=new Date(YEAR,m0,0).getDate(),off=(first.getDay()+6)%7;
-  const startIso=isoOf(DAYS[0]),endIso=isoOf(DAYS[DAYS.length-1]);
+  const today=sydToday(),cell={};
+  DAYS.forEach(d=>cell[isoOf(d)]={go:d.id,c:d.color,tag:CAL[d.id].tag,label:`${d.date} ${d.wk} ${tagOf(d)}`});
+  MORE.forEach(x=>{if(!x.noCell)cell[isoOf(x)]={to:x.id,c:CAIRNS_C,tag:x.tag,label:`${x.date} ${x.wk} ${x.city} ${x.title}`}});
+  const startIso=isoOf(DAYS[0]),endIso=isoOf(MORE.length?MORE[MORE.length-1]:DAYS[DAYS.length-1]);
   let status="";
-  if(today&&today<startIso){const n=Math.round((Date.parse(startIso)-Date.parse(today))/864e5);status=`还有 ${n} 天出发`}
-  else if(byIso[today])status=`今天是第 ${DAYS.indexOf(byIso[today])+1} 天`;
-  else if(today&&today>endIso)status="行程已结束";
-  let h=`<div class="cal"><div class="mh"><b>${YEAR} 年 ${m0} 月</b><span class="status">${status}</span></div><div class="grid">`;
+  if(today&&today<startIso)status=`还有 ${Math.round((isoUTC(startIso)-isoUTC(today))/864e5)} 天出发`;
+  else if(today&&today<=endIso)status=`今天是第 ${Math.round((isoUTC(today)-isoUTC(startIso))/864e5)+1} 天`;
+  else if(today)status="行程已结束";
+  // 只画相关的几周：出发前一周 → 行程最后一天那周
+  const dow=iso=>(new Date(isoUTC(iso)).getUTCDay()+6)%7;
+  const from=isoAdd(startIso,-dow(startIso)-7),to=isoAdd(endIso,6-dow(endIso));
+  const m1=+startIso.slice(5,7),m2=+endIso.slice(5,7);
+  let h=`<div class="cal"><div class="mh"><b>${YEAR} 年 ${m1===m2?m1:`${m1}–${m2}`} 月</b><span class="status">${status}</span></div><div class="grid">`;
   h+="一二三四五六日".split("").map(w=>`<div class="wd">${w}</div>`).join("");
-  for(let i=0;i<off;i++)h+=`<div class="c blank"></div>`;
-  for(let n=1;n<=nDays;n++){
-    const iso=`${YEAR}-${String(m0).padStart(2,"0")}-${String(n).padStart(2,"0")}`,d=byIso[iso],td=iso===today?" today":"";
-    if(d)h+=`<button class="c trip${td}" data-go="${d.id}" style="--dc:${d.color};background:${d.color}1A;border-top-color:${d.color}" aria-label="${d.date} ${d.wk} ${tagOf(d)}"><span class="n">${n}</span><span class="tag">${CAL[d.id].tag.map(t=>`<span>${t}</span>`).join("")}</span></button>`;
-    else h+=`<div class="c${td}"><span class="n">${n}</span></div>`;
+  for(let iso=from;iso<=to;iso=isoAdd(iso,1)){
+    const dn=+iso.slice(8),num=dn===1?`${+iso.slice(5,7)}/1`:dn,x=cell[iso],td=iso===today?" today":"";
+    if(x)h+=`<button class="c trip${td}" ${x.go?`data-go="${x.go}"`:`data-to="${x.to}"`} data-iso="${iso}" style="background:${x.c}1A;border-top-color:${x.c}" aria-label="${x.label}"><span class="n">${num}</span><span class="tag">${x.tag.map(t=>`<span>${t}</span>`).join("")}</span></button>`;
+    else h+=`<div class="c${td}" data-iso="${iso}"><span class="n">${num}</span></div>`;
   }
-  h+=`</div><div class="calnote">点日期看当天的地图和详细行程</div></div>`;
-  h+=`<div class="agenda">`;
+  h+=`</div><div class="calkey"><span><i style="background:linear-gradient(90deg,${DAYS.map(d=>d.color).join(",")})"></i>悉尼：点日期看当天地图和详细行程</span><span><i style="background:${CAIRNS_C}"></i>凯恩斯</span></div></div>`;
+  h+=`<div class="agenda"><h3 class="city">悉尼 · ${DAYS[0].date}–${DAYS[DAYS.length-1].date}</h3>`;
   DAYS.forEach(d=>{const td=isoOf(d)===today;
     h+=`<div class="ag${td?" today":""}" data-go="${d.id}" data-day="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="hd">${d.date} ${d.wk}${td?'<em>今天</em>':""}<small>${tagOf(d)}</small></div><ul>${calItems(d).map(x=>`<li><span class="t">${x.t}</span><span>${x.lab}</span></li>`).join("")}</ul></div></div>`});
-  h+=`</div><button class="icsbtn" id="icsbtn" type="button">📅 加到手机日历（.ics）</button><div class="calnote">每天一条全天日程，备注里是当天简表和这个网页的链接。苹果手机点了直接“添加全部”；华为手机下载后点开文件，用“日历”打开导入。</div>`;
+  if(MORE.length){
+    h+=`<h3 class="city">${MORE[0].city} · ${MORE[0].date}–${MORE[MORE.length-1].date}</h3>`;
+    MORE.forEach(x=>{const td=isoOf(x)===today;
+      h+=`<div class="ag plain${td?" today":""}" id="ag-${x.id}" data-day="${x.id}"><div class="bar" style="background:${CAIRNS_C}"></div><div><div class="hd">${x.date} ${x.wk}${td?'<em>今天</em>':""}<small>${x.title}</small></div><ul>${x.lines.map(l=>`<li><span>${l}</span></li>`).join("")}</ul></div></div>`});
+    h+=`<div class="calnote">凯恩斯这几天目前只有日程安排，没有地图和详细路线。</div>`;
+  }
+  h+=`</div><button class="icsbtn" id="icsbtn" type="button">📅 加到手机日历（.ics）</button><div class="calnote">每天一条全天日程，悉尼的备注里是当天简表和这个网页的链接。苹果手机点了直接“添加全部”；华为手机下载后点开文件，用“日历”打开导入。</div>`;
   content.innerHTML=h;
   content.querySelectorAll("[data-go]").forEach(c=>c.onclick=()=>go(c.dataset.go));
+  content.querySelectorAll("[data-to]").forEach(c=>c.onclick=()=>{const el=document.getElementById("ag-"+c.dataset.to);if(!el)return;
+    content.querySelectorAll(".ag.flash").forEach(e=>e.classList.remove("flash"));el.classList.add("flash");revealRow(el)});
   document.getElementById("icsbtn").onclick=downloadIcs;
 }
 function icsText(){
   const esc=s=>String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n");
   const enc=new TextEncoder();
   const fold=line=>{let out="",n=0;for(const ch of line){const b=enc.encode(ch).length;if(n+b>74){out+="\r\n ";n=1}out+=ch;n+=b}return out};
-  const ymd=(d,plus)=>{const [m,dd]=d.date.split("/").map(Number);return new Date(Date.UTC(YEAR,m-1,dd+(plus||0))).toISOString().slice(0,10).replace(/-/g,"")};
+  const ymd=(d,plus)=>isoAdd(isoOf(d),plus||0).replace(/-/g,"");
   const base=location.href.split("#")[0];
   const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
-  const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:悉尼行程"];
-  DAYS.forEach(d=>{
-    const desc=calItems(d).map(x=>`${x.t} ${x.lab}`).join("\n")+`\n\n${d.title}\n${base}#${d.id}`;
-    out.push("BEGIN:VEVENT",`UID:${d.id}-${YEAR}@sydney-trip-map`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${ymd(d)}`,`DTEND;VALUE=DATE:${ymd(d,1)}`,
-      `SUMMARY:${esc("悉尼 · "+tagOf(d))}`,`DESCRIPTION:${esc(desc)}`,`URL:${base}#${d.id}`,"TRANSP:TRANSPARENT","END:VEVENT");
-  });
+  const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:悉尼 · 凯恩斯行程"];
+  const ev=(uid,d,summary,desc,url)=>out.push("BEGIN:VEVENT",`UID:${uid}-${YEAR}@sydney-trip-map`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${ymd(d)}`,`DTEND;VALUE=DATE:${ymd(d,1)}`,
+      `SUMMARY:${esc(summary)}`,`DESCRIPTION:${esc(desc)}`,...(url?[`URL:${url}`]:[]),"TRANSP:TRANSPARENT","END:VEVENT");
+  DAYS.forEach(d=>ev(d.id,d,"悉尼 · "+tagOf(d),calItems(d).map(x=>`${x.t} ${x.lab}`).join("\n")+`\n\n${d.title}\n${base}#${d.id}`,`${base}#${d.id}`));
+  MORE.forEach(x=>ev(x.id,x,`${x.city} · ${x.title}`,x.lines.join("\n")));
   out.push("END:VCALENDAR");
   return out.map(fold).join("\r\n")+"\r\n";
 }
 function downloadIcs(){
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([icsText()],{type:"text/calendar;charset=utf-8"}));
-  a.download="sydney-trip.ics";document.body.appendChild(a);a.click();
+  a.download="trip-calendar.ics";document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
 }
 

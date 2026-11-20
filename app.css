@@ -126,6 +126,12 @@ nav.tabs::-webkit-scrollbar{display:none}
 .cal .c.trip:hover{filter:brightness(.97)}
 .cal .c.today{outline:2px solid var(--ink);outline-offset:-2px}
 .cal .c.today:not(.trip) .n{color:var(--ink);font-weight:700}
+.calkey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mute);margin:8px 2px 0}
+.calkey i{display:inline-block;width:14px;height:8px;border-radius:3px;margin-right:5px;vertical-align:1px}
+.agenda h3.city{font-size:14px;margin:16px 2px 4px}
+.agenda h3.city:first-child{margin-top:4px}
+.ag.plain{cursor:default}
+.ag.flash{border-color:#C8901A;box-shadow:0 0 0 1px #C8901A}
 .calnote{font-size:12px;color:var(--mute);margin:6px 2px 0}
 .ag{display:grid;grid-template-columns:5px 1fr;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:9px 12px 9px 0;margin:8px 0;cursor:pointer;overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ag:hover{border-color:#cfc8bb}
@@ -161,7 +167,7 @@ nav.tabs::-webkit-scrollbar{display:none}
   .leg .nav{padding:3px 10px;font-size:12.5px}
   .tab{padding:6px 12px}
   .stop{padding:10px 6px}
-  .stop,.leg,.daycard{scroll-margin-top:calc(var(--tabsH) + var(--mapH) + 12px)}
+  .stop,.leg,.daycard,.ag{scroll-margin-top:calc(var(--tabsH) + var(--mapH) + 12px)}
   .content{border-right:0;overflow:visible;padding:12px 12px 70px}
   .legend{font-size:10.5px;padding:4px 7px;gap:2px 9px;left:8px;top:8px;max-width:calc(100% - 64px)}
   .mk .lbl{font-size:11.5px}
