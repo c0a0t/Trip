@@ -1,0 +1,219 @@
+"""Playwright 检查：桌面 1400×860 与手机 390×844（触屏）。
+用法：先起本地服务器（python -m http.server 8765），再运行  python tests/check.py [http://127.0.0.1:8765/]
+截图写到 screenshots/。"""
+import json, math, pathlib, sys
+from playwright.sync_api import sync_playwright
+
+URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8765/"
+OUT = pathlib.Path(__file__).resolve().parent.parent / "screenshots"
+OUT.mkdir(exist_ok=True)
+results = []
+
+def check(name, ok, detail=""):
+    results.append((name, bool(ok), detail))
+    print(("PASS " if ok else "FAIL ") + name + (f"  [{detail}]" if detail else ""))
+
+def wait_idle(page, ms=900):
+    page.wait_for_timeout(ms)
+    page.wait_for_function("() => [...document.querySelectorAll('.leaflet-tile')].every(t => t.complete)", timeout=20000)
+
+def attach_console(page, bucket):
+    page.on("console", lambda m: bucket.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
+    page.on("pageerror", lambda e: bucket.append(f"pageerror: {e}"))
+    # Leaflet 缩放/平移时会主动取消还没下完的瓦片（net::ERR_ABORTED），这是正常行为，不算报错
+    page.on("requestfailed", lambda r: None if ("tile.openstreetmap.org" in r.url and "ERR_ABORTED" in (r.failure or ""))
+            else bucket.append(f"requestfailed: {r.url} {r.failure}"))
+
+def tiles_ok(page):
+    return page.evaluate("""() => { const t=[...document.querySelectorAll('.leaflet-tile')];
+        return {n:t.length, loaded:t.filter(x=>x.classList.contains('leaflet-tile-loaded')).length,
+                bad:t.filter(x=>x.complete && x.naturalWidth===0).length} }""")
+
+def legs_state(page):
+    return page.evaluate("""() => { const a=__app; return a.legLines.map(x=>({k:`${x.lg.mode}:${x.lg.from}>${x.lg.to}`,
+        real: !!a.ROUTES[`${x.lg.mode}:${x.lg.from}>${x.lg.to}`], n:x.ll.length})) }""")
+
+def marker_xy(page, p):
+    """标记在页面上的坐标"""
+    return page.evaluate("""p => { const m=__app.map, P_=__app.markers.find(x=>x.p===p); if(!P_) return null;
+        const r=document.getElementById('map').getBoundingClientRect(); const ll=P_.m.getLatLng(); const pt=m.latLngToContainerPoint(ll);
+        return {x:r.left+pt.x, y:r.top+pt.y} }""", p)
+
+def popup_inside(page):
+    return page.evaluate("""() => { const p=document.querySelector('.leaflet-popup'); if(!p) return null;
+        const a=p.getBoundingClientRect(), b=document.getElementById('mapwrap').getBoundingClientRect();
+        return {inside: a.left>=b.left-1 && a.right<=b.right+1 && a.top>=b.top-1 && a.bottom<=b.bottom+1,
+                text: p.innerText.slice(0,80), a:[a.left,a.top,a.right,a.bottom].map(Math.round), b:[b.left,b.top,b.right,b.bottom].map(Math.round)} }""")
+
+def common_checks(page, tag):
+    # 每天：路线全部来自 routes.json、图例、导航链接、Google 分段链接
+    days = page.evaluate("DAYS.map(d=>d.id)")
+    for d in days:
+        page.evaluate(f"__app.go('{d}')"); wait_idle(page, 700)
+        st = legs_state(page)
+        check(f"[{tag}] {d}: {len(st)} 段路线都用真实路线", st and all(x["real"] for x in st), ",".join(x["k"] for x in st if not x["real"]))
+        info = page.evaluate("""() => ({legend:document.getElementById('legend').innerText,
+            nav:[...document.querySelectorAll('.leg')].map(l=>!!l.querySelector('a.nav')),
+            to:[...document.querySelectorAll('.leg')].map(l=>l.innerText.slice(0,10)),
+            gm:[...document.querySelectorAll('.gmrow')].map(a=>a.href)})""")
+        modes = page.evaluate(f"[...new Set(__app.legLines.map(x=>MODES[x.lg.mode].n))]")
+        check(f"[{tag}] {d}: 图例含 {'/'.join(modes)}", all(m in info["legend"] for m in modes))
+        wps = [len(h.split("waypoints=")[1].split("&")[0].split("%7C")) if "waypoints=" in h else 0 for h in info["gm"]]
+        check(f"[{tag}] {d}: Google 分段 {len(info['gm'])} 段，中途点最多 {max(wps or [0])} 个", info["gm"] and max(wps or [0]) <= 3)
+        n_nav = sum(info["nav"])
+        check(f"[{tag}] {d}: 路段导航链接 {n_nav}/{len(info['nav'])}", n_nav >= len(info["nav"]) - (1 if d == "day4" else 0))
+    # 方案切换
+    page.evaluate("__app.go('day5')"); wait_idle(page)
+    a = {x["k"] for x in legs_state(page)}
+    page.click(".seg button[data-v='B']"); wait_idle(page)
+    b = {x["k"] for x in legs_state(page)}
+    check(f"[{tag}] 11/28 方案 A→B 切换", "taxi:happypho>bondi" in a and "lr:happypho>chinatown" in b and "taxi:happypho>bondi" not in b)
+    page.click(".seg button[data-v='A']"); wait_idle(page, 400)
+    page.evaluate("__app.go('day3')"); wait_idle(page)
+    page.click(".seg button[data-v='A']"); wait_idle(page, 400)
+    txt = page.inner_text("#content")
+    check(f"[{tag}] 11/26 方案 B→A 切换", "按团的集合时间" in txt and "Circular Quay 码头上船" not in txt)
+    page.click(".seg button[data-v='B']"); wait_idle(page, 400)
+
+def desktop(pw):
+    br = pw.chromium.launch()
+    ctx = br.new_context(viewport={"width": 1400, "height": 860}, device_scale_factor=1)
+    page = ctx.new_page(); logs = []; attach_console(page, logs)
+    page.goto(URL); page.wait_for_function("window.__app"); wait_idle(page, 1500)
+    t = tiles_ok(page)
+    check("[桌面] 总览瓦片加载", t["loaded"] > 4 and t["bad"] == 0, str(t))
+    ov = page.inner_text("#content")
+    check("[桌面] 总览：预订清单 + 注意事项 + 来源", all(s in ov for s in ["出发前要订的", "需要提前知道的", "来源"]))
+    check("[桌面] OSM 署名", "OpenStreetMap" in page.inner_text(".leaflet-control-attribution"))
+    page.screenshot(path=str(OUT / "desktop-overview.png"))
+    # 日期标签
+    page.click("nav.tabs .tab:nth-child(3)"); wait_idle(page, 1200)
+    check("[桌面] 点日期标签切到 11/25", page.evaluate("__app.state.day") == "day2" and "11/25" in page.inner_text(".dayhead"))
+    page.screenshot(path=str(OUT / "desktop-day2.png"))
+    # 时间线点地点 → 地图定位 + 弹窗
+    page.click(".stop[data-p='bstairs']"); page.wait_for_timeout(1300)
+    pi = popup_inside(page)
+    check("[桌面] 时间线点地点：弹窗出现且在地图内", pi and pi["inside"] and "Bridge Stairs" in pi["text"], str(pi))
+    page.screenshot(path=str(OUT / "desktop-stop-popup.png"))
+    # 地图上点标记
+    page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
+    xy = marker_xy(page, "obs")
+    page.mouse.click(xy["x"], xy["y"]); page.wait_for_timeout(1300)
+    check("[桌面] 地图上点标记 → 选中并弹窗", page.evaluate("__app.state.sel") == "obs" and "天文台" in (popup_inside(page) or {}).get("text", ""),
+          page.evaluate("__app.state.sel"))
+    # 点路段（时间线）→ 显示交通方式
+    page.evaluate("__app.go('day2')"); wait_idle(page, 1000)
+    page.click(".leg:has-text('渡轮') .mode"); page.wait_for_timeout(1400)
+    pi = popup_inside(page)
+    check("[桌面] 时间线点路段 → 地图缩放到该段并弹出交通方式", pi and "渡轮" in pi["text"] and pi["inside"], str(pi))
+    page.screenshot(path=str(OUT / "desktop-leg-popup.png"))
+    # 地图上点路段
+    page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
+    mid = page.evaluate("""() => { const x=__app.legLines.find(o=>o.lg.mode==='train'); const m=__app.map;
+        const ll=x.ll[Math.floor(x.ll.length/2)]; const pt=m.latLngToContainerPoint(ll); const r=document.getElementById('map').getBoundingClientRect();
+        return {x:r.left+pt.x, y:r.top+pt.y} }""")
+    page.mouse.click(mid["x"], mid["y"]); page.wait_for_timeout(700)
+    pi = popup_inside(page)
+    check("[桌面] 地图上点路段 → 显示交通方式", pi and "火车" in pi["text"], str(pi))
+    # 大桥那段确实在桥东侧人行道（Cahill Walk）
+    r = page.evaluate("__app.ROUTES['walk:bstairs>milsonpark']")
+    check("[桌面] 25 号 Bridge Stairs→McDougall St 走海港大桥东侧人行道", "Cahill Walk" in r.get("names", []), ",".join(r.get("names", [])))
+    # 缩放到全悉尼含蓝山和机场
+    page.evaluate("__app.go('day4')"); wait_idle(page, 1500)
+    b = page.evaluate("(()=>{const b=__app.map.getBounds();return [b.getWest(),b.getEast(),b.getSouth(),b.getNorth()]})()")
+    check("[桌面] 11/27 视野包含蓝山 Scenic World 和 Echo Point", b[0] < 150.30 and b[1] > 151.2, str([round(v, 3) for v in b]))
+    page.screenshot(path=str(OUT / "desktop-day4-bluemountains.png"))
+    common_checks(page, "桌面")
+    page.evaluate("__app.go(null)"); wait_idle(page, 800)
+    errs = [l for l in logs if not l.startswith("warning")]
+    check("[桌面] 控制台无报错", not errs, " | ".join(errs[:5]))
+    br.close()
+
+def touch(cdp, typ, pts):
+    cdp.send("Input.dispatchTouchEvent", {"type": typ, "touchPoints": [{"x": x, "y": y, "id": i} for i, (x, y) in enumerate(pts)]})
+
+def mobile(pw):
+    br = pw.chromium.launch()
+    ctx = br.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True,
+                         user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1")
+    page = ctx.new_page(); logs = []; attach_console(page, logs)
+    cdp = ctx.new_cdp_session(page)
+    page.goto(URL + "#day2"); page.wait_for_function("window.__app"); wait_idle(page, 1500)
+    t = tiles_ok(page)
+    check("[手机] 瓦片加载", t["loaded"] > 4 and t["bad"] == 0, str(t))
+    page.screenshot(path=str(OUT / "mobile-day2-top.png"))
+    # 吸顶：滚动后日期栏和地图都固定在顶部
+    page.evaluate("window.scrollTo(0, 900)"); page.wait_for_timeout(500)
+    g = page.evaluate("""() => { const t=document.getElementById('tabs').getBoundingClientRect(), m=document.getElementById('mapwrap').getBoundingClientRect();
+        return {scrollY:scrollY, tabsTop:t.top, tabsBottom:t.bottom, mapTop:m.top, mapH:m.height} }""")
+    check("[手机] 往下滚时间线：日期栏和地图固定在顶部", g["scrollY"] > 300 and abs(g["tabsTop"]) < 1 and abs(g["mapTop"] - g["tabsBottom"]) < 2, str(g))
+    page.screenshot(path=str(OUT / "mobile-day2-scrolled.png"))
+    page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(300)
+    box = page.locator("#map").bounding_box()
+    cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    # 单指拖动：地图平移，页面不滚动
+    c0 = page.evaluate("__app.map.getCenter()"); y0 = page.evaluate("scrollY")
+    touch(cdp, "touchStart", [(cx, cy)])
+    for i in range(1, 11): touch(cdp, "touchMove", [(cx - 8 * i, cy + 6 * i)]); page.wait_for_timeout(16)
+    touch(cdp, "touchEnd", []); page.wait_for_timeout(600)
+    c1 = page.evaluate("__app.map.getCenter()"); y1 = page.evaluate("scrollY")
+    check("[手机] 单指拖动只移动地图", (abs(c1["lat"] - c0["lat"]) + abs(c1["lng"] - c0["lng"])) > 1e-4 and y1 == y0, f"scroll {y0}->{y1}")
+    # 双指缩放：地图放大，网页本身不缩放
+    z0 = page.evaluate("__app.map.getZoom()")
+    touch(cdp, "touchStart", [(cx - 30, cy), (cx + 30, cy)])
+    for i in range(1, 13): touch(cdp, "touchMove", [(cx - 30 - 9 * i, cy), (cx + 30 + 9 * i, cy)]); page.wait_for_timeout(16)
+    touch(cdp, "touchEnd", []); page.wait_for_timeout(900)
+    z1 = page.evaluate("__app.map.getZoom()"); vs = page.evaluate("visualViewport.scale")
+    check("[手机] 双指缩放只缩放地图", z1 > z0 + 0.5 and abs(vs - 1) < 1e-6, f"zoom {z0}->{z1}, page scale {vs}")
+    # 靠得近的标记：点在两个标记之间偏向某一个，应选中最近的那个
+    page.evaluate("__app.go('day2')"); wait_idle(page, 1200)
+    for tgt, other, frac in (("stmary", "hpb", 0.62), ("hpb", "stmary", 0.38)):
+        # 从地图选中地点后页面会平滑滚到时间线对应条目，所以每次都重新定位、等滚动停下再算坐标
+        page.evaluate("__app.map.closePopup(); __app.state.sel=null; __app.map.setView([-33.8705,151.2128],15,{animate:false})")
+        page.wait_for_timeout(900)
+        a, b = marker_xy(page, "hpb"), marker_xy(page, "stmary")
+        d = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+        tx, ty = a["x"] + (b["x"] - a["x"]) * frac, a["y"] + (b["y"] - a["y"]) * frac
+        page.touchscreen.tap(tx, ty); page.wait_for_timeout(1300)
+        check(f"[手机] 两个标记相距 {d:.0f}px，点偏向 {tgt} 的位置 → 选中 {tgt}", page.evaluate("__app.state.sel") == tgt, page.evaluate("__app.state.sel"))
+    # 弹窗不超出地图（地图边缘的点也测）
+    for p in ("mpwharf", "soh", "home", "milsonpark"):
+        page.evaluate(f"__app.selectStop('day2','{p}',false)"); page.wait_for_timeout(1500)
+        pi = popup_inside(page)
+        check(f"[手机] {p} 弹窗在地图范围内", pi and pi["inside"], str(pi))
+    page.screenshot(path=str(OUT / "mobile-popup.png"))
+    # 时间线点地点（手机）
+    page.evaluate("window.scrollTo(0, 700)"); page.wait_for_timeout(300)
+    page.locator(".stop[data-p='westfield']").tap(); page.wait_for_timeout(1400)
+    check("[手机] 时间线点地点 → 地图定位并弹窗", page.evaluate("__app.state.sel") == "westfield" and popup_inside(page) is not None)
+    # 展开地图
+    page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(300)
+    h0 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
+    page.locator(".ctl-exp").tap(); page.wait_for_timeout(700)
+    h1 = page.evaluate("document.getElementById('mapwrap').offsetHeight")
+    check("[手机] 展开地图到大半屏", h1 > 844 * 0.68 and h1 > h0 + 150, f"{h0}px -> {h1}px")
+    wait_idle(page, 600)
+    page.screenshot(path=str(OUT / "mobile-expanded.png"))
+    page.locator(".ctl-exp").tap(); page.wait_for_timeout(600)
+    # 地图上点路段
+    page.evaluate("__app.go('day3')"); wait_idle(page, 1300)
+    mid = page.evaluate("""() => { const x=__app.legLines.find(o=>o.lg.mode==='ferry'); const m=__app.map;
+        const ll=x.ll[Math.floor(x.ll.length*0.4)]; const pt=m.latLngToContainerPoint(ll); const r=document.getElementById('map').getBoundingClientRect();
+        return {x:r.left+pt.x, y:r.top+pt.y} }""")
+    page.touchscreen.tap(mid["x"], mid["y"]); page.wait_for_timeout(900)
+    pi = popup_inside(page)
+    check("[手机] 点地图上的路段 → 显示交通方式", pi and "渡轮" in pi["text"] and pi["inside"], str(pi))
+    page.screenshot(path=str(OUT / "mobile-day3-ferry.png"))
+    common_checks(page, "手机")
+    page.evaluate("__app.go(null)"); wait_idle(page, 1000)
+    page.screenshot(path=str(OUT / "mobile-overview.png"))
+    errs = [l for l in logs if not l.startswith("warning")]
+    check("[手机] 控制台无报错", not errs, " | ".join(errs[:5]))
+    br.close()
+
+with sync_playwright() as pw:
+    desktop(pw)
+    mobile(pw)
+fails = [r for r in results if not r[1]]
+print(f"\n{len(results) - len(fails)}/{len(results)} 通过")
+sys.exit(1 if fails else 0)

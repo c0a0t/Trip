@@ -1,0 +1,261 @@
+{
+ "home": {
+  "ll": [
+   -33.88075,
+   151.19458
+  ],
+  "src": "门牌插值：OSM 无 89 号门牌点。Bay St 西侧（Glebe 侧）1 号=Broadway 购物中心(南端)、77/79 号在 Queen St 口(-33.8813)，号码往北递增；89 号取 Queen St–Wentworth St 之间西侧，误差约 ±40 m"
+ },
+ "fish": {
+  "ll": [
+   -33.87438,
+   151.19067
+  ],
+  "src": "Nominatim: Sydney Fish Market, 1 Bridge Rd (marketplace)"
+ },
+ "broadway": {
+  "ll": [
+   -33.88369,
+   151.19388
+  ],
+  "src": "Nominatim: Broadway Shopping Centre, 1 Bay St"
+ },
+ "dh": {
+  "ll": [
+   -33.87568,
+   151.20172
+  ],
+  "src": "Nominatim: Tumbalong Park"
+ },
+ "barangaroo": {
+  "ll": [
+   -33.85849,
+   151.20116
+  ],
+  "src": "Nominatim: Barangaroo Reserve"
+ },
+ "dawes": {
+  "ll": [
+   -33.85525,
+   151.20919
+  ],
+  "src": "Nominatim: Dawes Point Reserve"
+ },
+ "cq": {
+  "ll": [
+   -33.8609,
+   151.211
+  ],
+  "src": "Overpass: Circular Quay 4 号码头（2B–6B 码头节点中间）"
+ },
+ "soh": {
+  "ll": [
+   -33.8572,
+   151.21512
+  ],
+  "src": "Nominatim: Sydney Opera House"
+ },
+ "rbg": {
+  "ll": [
+   -33.86277,
+   151.21571
+  ],
+  "src": "Nominatim: Royal Botanic Garden（园区中心）"
+ },
+ "hpb": {
+  "ll": [
+   -33.86962,
+   151.2128
+  ],
+  "src": "Nominatim: Hyde Park Barracks (museum)"
+ },
+ "stmary": {
+  "ll": [
+   -33.87124,
+   151.21336
+  ],
+  "src": "Nominatim: St Mary's Cathedral"
+ },
+ "hydepark": {
+  "ll": [
+   -33.87097,
+   151.2118
+  ],
+  "src": "Nominatim: Archibald Fountain"
+ },
+ "westfield": {
+  "ll": [
+   -33.87015,
+   151.2089
+  ],
+  "src": "Nominatim: Westfield Sydney, Pitt Street Mall"
+ },
+ "stjames": {
+  "ll": [
+   -33.87123,
+   151.21177
+  ],
+  "src": "Nominatim: St James station"
+ },
+ "cqstn": {
+  "ll": [
+   -33.86136,
+   151.21072
+  ],
+  "src": "Nominatim: Circular Quay station"
+ },
+ "rocks": {
+  "ll": [
+   -33.85999,
+   151.20832
+  ],
+  "src": "Nominatim: The Rocks（街区中心）"
+ },
+ "obs": {
+  "ll": [
+   -33.85976,
+   151.20534
+  ],
+  "src": "Nominatim: Observatory Hill Park"
+ },
+ "bstairs": {
+  "ll": [
+   -33.85912,
+   151.20698
+  ],
+  "src": "Nominatim: The Bridge Stairs, Cumberland St"
+ },
+ "milsonspt": {
+  "ll": [
+   -33.84665,
+   151.21273
+  ],
+  "src": "Nominatim: Milsons Point Station"
+ },
+ "milsonpark": {
+  "ll": [
+   -33.84417,
+   151.21438
+  ],
+  "src": "Nominatim: Milson Park, McDougall Street"
+ },
+ "secretgarden": {
+  "ll": [
+   -33.84401,
+   151.20868
+  ],
+  "src": "Nominatim: Wendy Whiteley's Garden"
+ },
+ "mpwharf": {
+  "ll": [
+   -33.84959,
+   151.21086
+  ],
+  "src": "Nominatim/Overpass: Milsons Point Wharf (ferry_terminal)"
+ },
+ "zoowharf": {
+  "ll": [
+   -33.84639,
+   151.2396
+  ],
+  "src": "Nominatim/Overpass: Taronga Zoo ferry terminal"
+ },
+ "zootop": {
+  "ll": [
+   -33.84245,
+   151.24162
+  ],
+  "src": "Overpass: 动物园 entrance=main（Bradleys Head Rd 正门）"
+ },
+ "meet": {
+  "ll": [
+   -33.88144,
+   151.20445
+  ],
+  "src": "Nominatim: Haymarket（示例位置，以团为准）"
+ },
+ "bluemtn": {
+  "ll": [
+   -33.72895,
+   150.30126
+  ],
+  "src": "Nominatim: Scenic World, Katoomba"
+ },
+ "echopoint": {
+  "ll": [
+   -33.73224,
+   150.31217
+  ],
+  "src": "Nominatim: Echo Point, Katoomba（蓝山附属标记）"
+ },
+ "chinatown": {
+  "ll": [
+   -33.87815,
+   151.20402
+  ],
+  "src": "Nominatim: Dixon Street (pedestrian)"
+ },
+ "paddys": {
+  "ll": [
+   -33.87985,
+   151.20344
+  ],
+  "src": "Nominatim: Paddy's Markets, 9-13 Hay St"
+ },
+ "glebemkt": {
+  "ll": [
+   -33.88353,
+   151.19088
+  ],
+  "src": "Nominatim: Glebe Public School（市集所在）"
+ },
+ "usyd": {
+  "ll": [
+   -33.88591,
+   151.18879
+  ],
+  "src": "Overpass: The Quadrangle, University of Sydney"
+ },
+ "ashmore": {
+  "ll": [
+   -33.90277,
+   151.18918
+  ],
+  "src": "Nominatim: Ashmore Street, Erskineville"
+ },
+ "happypho": {
+  "ll": [
+   -33.90914,
+   151.22365
+  ],
+  "src": "Nominatim: Happy Pho, Anzac Parade, Kensington (restaurant)"
+ },
+ "bondi": {
+  "ll": [
+   -33.89237,
+   151.27808
+  ],
+  "src": "Overpass: Bondi Beach (natural=beach)"
+ },
+ "icebergs": {
+  "ll": [
+   -33.89505,
+   151.27457
+  ],
+  "src": "Nominatim: Bondi Icebergs Pool, Notts Ave"
+ },
+ "glebepointrd": {
+  "ll": [
+   -33.88031,
+   151.18739
+  ],
+  "src": "Nominatim: Glebe Point Road（街道中心）"
+ },
+ "airport": {
+  "ll": [
+   -33.93626,
+   151.16448
+  ],
+  "src": "Nominatim: Sydney Airport T1 International（国际航站楼；国内航班请改 T2/T3）"
+ }
+}

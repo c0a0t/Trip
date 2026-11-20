@@ -1,0 +1,8 @@
+.venv/
+build/tilecache/
+build/geocode-raw.json
+build/geocode-refine.json
+__pycache__/
+tests/last-run.txt
+site/
+tests/last-run-site.txt

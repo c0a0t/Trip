@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#FBFAF7">
+<title>悉尼 11.24–11.29 行程地图</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <header class="head">
+    <h1>悉尼 11.24 – 11.29 行程地图</h1>
+    <p id="subtitle">住 89 Bay St, Glebe · 点日期看当天路线 · 点地点/路段在地图上定位 · “导航”打开 Google Maps 实时路线</p>
+  </header>
+  <nav class="tabs" id="tabs" aria-label="日期"></nav>
+  <section class="content" id="content"></section>
+  <main class="mapwrap" id="mapwrap">
+    <div id="map" aria-label="行程地图"></div>
+    <div class="legend" id="legend"></div>
+    <div id="tip" role="tooltip"></div>
+  </main>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
