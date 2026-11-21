@@ -41,7 +41,19 @@ FINAL = {
  "bondi":       (-33.89237, 151.27808, "Overpass: Bondi Beach (natural=beach)"),
  "icebergs":    (-33.89505, 151.27457, "Nominatim: Bondi Icebergs Pool, Notts Ave"),
  "glebepointrd":(-33.88031, 151.18739, "Nominatim: Glebe Point Road（街道中心）"),
- "airport":     (-33.93626, 151.16448, "Nominatim: Sydney Airport T1 International（国际航站楼；国内航班请改 T2/T3）"),
+ "airport":     (-33.93378, 151.17993, "Nominatim: Sydney Airport T2 Domestic（国内航站楼，T3 就在旁边；29 日飞凯恩斯是国内航班）"),
+ # ---- 凯恩斯（cairns.js）；查询见 cairns_geocode.py ----
+ "c_airport":   (-16.87490, 145.75222, "Overpass: Cairns Airport 航站楼（International Terminal 以南的国内航站楼）"),
+ "c_home":      (-16.92075, 145.77758, "示意位置：住处待定，先放在市中心 Shields St（City Place 一带，Nominatim）"),
+ "c_lagoon":    (-16.91964, 145.77798, "Nominatim: Cairns Esplanade Lagoon"),
+ "c_reeffleet": (-16.92166, 145.78041, "Nominatim: Reef Fleet Terminal (ferry_terminal)"),
+ "c_reef":      (-16.86800, 146.20800, "示意：Moore Reef 西缘外侧水面（OSM 礁区范围 146.212–146.252E），实际去哪片礁以团为准"),
+ "c_cnsstn":    (-16.92567, 145.77126, "Nominatim: Cairns railway station, Bunda St"),
+ "c_barron":    (-16.83644, 145.64298, "Nominatim: Barron Falls railway station"),
+ "c_kuranda":   (-16.81848, 145.63909, "Nominatim: Kuranda railway station"),
+ "c_kvillage":  (-16.81935, 145.63288, "Nominatim: Kuranda Heritage Market"),
+ "c_skyk":      (-16.81913, 145.63909, "Nominatim: Skyrail Kuranda Terminal (aerialway/station)"),
+ "c_skys":      (-16.84766, 145.69505, "Nominatim: Skyrail Smithfield Terminal (aerialway/station)"),
 }
 
 src = (ROOT / "data.js").read_text(encoding="utf-8")

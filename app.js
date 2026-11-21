@@ -13,7 +13,12 @@ try{
 // 核准坐标覆盖 data.js 里的近似坐标；蓝山/机场现在是真实位置，不再是图边箭头
 for(const k in GEO){ if(P[k]) P[k].ll=GEO[k].ll; }
 P.echopoint={n:"Echo Point 三姐妹峰",ll:(GEO.echopoint||{ll:[-33.73224,150.31217]}).ll,q:"Echo Point Lookout, Katoomba NSW",sub:"bluemtn"};
-const NO_NAV=new Set(["bluemtn"]);  // 跟团大巴段不给导航（原页面同样不给）
+const NO_NAV=new Set(["bluemtn","c_barron","c_kuranda"]);  // 跟团大巴段、Kuranda 观光火车不给导航（Google 查不到）；出海船/缆车没有 GMODE，也不给
+const hasNav=it=>!!GMODE[it.mode]&&!NO_NAV.has(it.to);
+// 城市：悉尼（data.js）和凯恩斯（cairns.js，d.city="cairns"）。地图可拖动范围随当天所在城市切换
+const CITY={syd:{bounds:[[-34.25,149.95],[-33.45,151.55]]},cairns:{bounds:[[-17.35,145.35],[-16.40,146.45]]}};
+const cityOf=d=>(d&&d.city)||"syd";
+const SYD_DAYS=DAYS.filter(d=>!d.city);
 delete P.bluemtn.edge; delete P.airport.edge;
 // 蓝山日：Echo Point 作为蓝山那一站的附属标记
 const SUBS={day4:["echopoint"]};
@@ -48,7 +53,7 @@ const isNarrow=()=>window.innerWidth<=820;
 const mapEl=document.getElementById("map"),mapwrap=document.getElementById("mapwrap");
 const map=L.map(mapEl,{
   zoomControl:false,attributionControl:true,minZoom:9,maxZoom:19,
-  maxBounds:[[-34.25,149.95],[-33.45,151.55]],maxBoundsViscosity:.8,
+  maxBounds:CITY.syd.bounds,maxBoundsViscosity:.8,
   zoomSnap:.25,zoomDelta:1,wheelPxPerZoomLevel:90,tapTolerance:12,bounceAtZoomLimits:false
 }).setView([-33.872,151.205],13);
 map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
@@ -81,7 +86,7 @@ mapwrap.addEventListener("touchmove",e=>{if(e.cancelable)e.preventDefault()},{pa
 mapwrap.addEventListener("touchstart",e=>{if(e.touches.length>1&&e.cancelable)e.preventDefault()},{passive:false});
 
 // 地图上的线型（比 data.js 里的 MODES 更粗；虚线间距按粗细放大）。图例用同一套
-const LINE={walk:{w:6,dash:"0.1 11"},taxi:{w:5.5,dash:"12 9"},coach:{w:5.5,dash:"14 9"},bus:{w:6},lr:{w:6},train:{w:6},ferry:{w:6}};
+const LINE={walk:{w:6,dash:"0.1 11"},taxi:{w:5.5,dash:"12 9"},coach:{w:5.5,dash:"14 9"},bus:{w:6},lr:{w:6},train:{w:6},ferry:{w:6},boat:{w:6},cable:{w:5,dash:"18 7"}};
 const lineStyle=mode=>({w:(LINE[mode]||{}).w||6,dash:(LINE[mode]||{}).dash||null});
 const BASE={halo:.2,casing:.95};
 function legOpacity(x,on){ // on: true 高亮 / false 压暗 / undefined 恢复
@@ -94,7 +99,7 @@ function markerHTML(cls,bg,txt,label){
 function render(){
   routeLayer.clearLayers();iconLayer.clearLayers();markLayer.clearLayers();markers=[];legLines=[];
   const single=!!state.day;
-  const days=single?[dayById(state.day)]:DAYS;
+  const days=single?[dayById(state.day)]:SYD_DAYS; // 总览只画悉尼
   days.forEach(d=>{
     legsOf(d).forEach(lg=>{
       const m=MODES[lg.mode],s=lineStyle(lg.mode),info=legInfo(lg),ll=legPath(lg),schem=info&&info.kind==="schematic";
@@ -227,6 +232,7 @@ function fitLL(list,opt={}){
   const b=L.latLngBounds(list);
   const pad=isNarrow()?[22,22]:[56,56];
   const o={paddingTopLeft:L.point(pad[0],pad[1]+(opt.top||0)),paddingBottomRight:L.point(pad[0],pad[1]),maxZoom:opt.maxZoom||17};
+  if(opt.instant){map.fitBounds(b,Object.assign({animate:false},o));return} // 换城市：直接跳过去，不飞 2000 公里
   flyView(b,o);
 }
 // flyTo 在起止视野几乎相同或地图尚无尺寸时会算出 NaN（Leaflet 已知问题），这时直接 setView
@@ -246,13 +252,22 @@ function flyPoint(ll,z){
   if(!sz.x||Math.abs(z-map.getZoom())<.01&&map.latLngToContainerPoint(ll).distanceTo(sz.divideBy(2))<2){map.setView(ll,z,{animate:false});map.fire("moveend");return}
   try{map.flyTo(ll,z,{duration:.5})}catch(e){map.setView(ll,z,{animate:false})}
 }
-function fitDay(){
-  if(!state.day){ // 总览：市区（蓝山团车线往西出画）
-    const all=[];DAYS.forEach(d=>stopsOf(d).forEach(s=>{if(s.p!=="bluemtn")all.push(P[s.p].ll)}));all.push(P.airport.ll);
-    fitLL(all,{maxZoom:14});return}
+function fitDay(instant){
+  if(!state.day){ // 总览：悉尼市区（蓝山团车线往西出画）
+    const all=[];SYD_DAYS.forEach(d=>stopsOf(d).forEach(s=>{if(s.p!=="bluemtn")all.push(P[s.p].ll)}));all.push(P.airport.ll);
+    fitLL(all,{maxZoom:14,instant});return}
   const d=dayById(state.day);const all=[];
   visibleItems(d).forEach(i=>{if(i.leg)legPath(i).forEach(p=>all.push(p));else all.push(P[i.p].ll)});
-  fitLL(all,{maxZoom:17,top:isNarrow()?20:30});
+  const lgH=document.getElementById("legend").offsetHeight; // 图例在地图左上角，按它的实际高度留出上边距（手机上可能两行）
+  fitLL(all,{maxZoom:17,top:Math.max(isNarrow()?20:30,lgH-8),instant});
+}
+let curCity="syd";
+// 换城市时先放开可拖动范围、直接跳到新城市，再锁定新范围；同城市返回 false
+function switchCity(){
+  const c=cityOf(state.day&&dayById(state.day));
+  if(c===curCity)return false;
+  curCity=c;map.setMaxBounds(null);fitDay(true);map.setMaxBounds(CITY[c].bounds);
+  return true;
 }
 /* ---------- 手机：地图和行程之间的拖动条，上下拖调地图高度；轻点在默认/大半屏之间切换 ---------- */
 const resizer=document.getElementById("resizer");
@@ -294,9 +309,11 @@ function gmSegments(d){
   const segs=[];let cur=null;
   legsOf(d).forEach(lg=>{
     if(lg.from===lg.to)return;
+    // 出海船、缆车、Kuranda 观光火车 Google 给不出路线：跳过，并且前后的步行不连成一段
+    if(!GMODE[lg.mode]||(lg.mode==="train"&&NO_NAV.has(lg.to))){cur=null;return}
     if(lg.mode==="walk"){
       // 手机浏览器的 Google 地图链接每段最多 3 个中途点（= 5 个点）
-      if(cur&&cur.mode==="walk"&&cur.stops[cur.stops.length-1]===lg.from&&cur.stops.length<5&&!(lg.from==="home"&&cur.stops.length>1)){cur.stops.push(lg.to)}
+      if(cur&&cur.mode==="walk"&&cur.stops[cur.stops.length-1]===lg.from&&cur.stops.length<5&&!(P[lg.from].home&&cur.stops.length>1)){cur.stops.push(lg.to)}
       else{cur={mode:"walk",stops:[lg.from,lg.to]};segs.push(cur)}
     }else{cur={mode:lg.mode,stops:[lg.from,lg.to],note:lg.note};segs.push(cur);cur=null}
   });
@@ -325,27 +342,33 @@ function renderTabs(){
   const cur=state.view||state.day;
   const mk=(id,label,color)=>{const b=document.createElement("button");b.className="tab"+(cur===id?" on":"");
     b.innerHTML=(color?`<span class="dot" style="background:${color}"></span>`:"")+label;b.onclick=()=>go(id);tabs.appendChild(b)};
-  mk(null,"总览");mk("cal","日历");DAYS.forEach(d=>mk(d.id,`${d.date} ${d.wk}`,d.color));
+  mk(null,"总览");mk("cal","日历");
+  DAYS.forEach((d,i)=>{
+    if(d.city&&(!i||DAYS[i-1].city!==d.city)){const s=document.createElement("span");s.className="tabsep";s.textContent="凯恩斯";tabs.appendChild(s)}
+    mk(d.id,d.tab||`${d.date} ${d.wk}`,d.color)});
   const on=tabs.querySelector(".on");if(on)tabs.scrollLeft=on.offsetLeft-tabs.clientWidth/2+on.offsetWidth/2;
 }
 function renderLegend(){
   const lg=document.getElementById("legend");
   const sw=(m,k)=>{const d=k==="walk"?"0.1 7":k==="taxi"||k==="coach"?"8 5":"";
     return `<svg width="28" height="10"><line x1="3" y1="5" x2="25" y2="5" stroke="${m.c}" stroke-width="4" stroke-dasharray="${d}" stroke-linecap="round"/></svg>`};
-  if(!state.day){lg.innerHTML=DAYS.map(d=>`<span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="${d.color}"/></svg>${d.date}</span>`).join("");return}
+  if(!state.day){lg.innerHTML=SYD_DAYS.map(d=>`<span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="${d.color}"/></svg>${d.date}</span>`).join("");return}
   const used=new Set(legsOf(dayById(state.day)).map(l=>l.mode));
   lg.innerHTML=Object.entries(MODES).filter(([k])=>used.has(k)).map(([k,m])=>`<span>${sw(m,k)}${m.n}</span>`).join("");
 }
 function go(id,push=true,keepView=false){
   const cal=id==="cal";
-  state.view=cal?"cal":null;state.day=cal?null:id;state.sel=null;renderTabs();renderContent();render();renderLegend();if(!keepView)fitDay();
+  state.view=cal?"cal":null;state.day=cal?null:id;state.sel=null;renderTabs();renderContent();render();renderLegend();
+  if(!switchCity()&&!keepView)fitDay();
   if(push){try{history.replaceState(null,"",cal?"#calendar":id?"#"+id:"#overview")}catch(e){}}
   content.scrollTop=0;if(isNarrow())window.scrollTo({top:0});
 }
+const cityName=d=>d.city?"凯恩斯":"悉尼";
+const navLbl=(x,cur)=>cityOf(x)!==cityOf(cur)?`${cityName(x)} ${x.date}`:x.date; // 跨城市时带上城市名（两个 11/29）
 function renderContent(){
   if(!state.day){if(state.view==="cal")renderCalendar();else renderOverview();return}
   const d=dayById(state.day);const num=numbering(d);
-  let h=`<div class="dayhead"><div class="kicker"><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${d.color}"></span>${d.date} ${d.wk}</div><h2>${d.title}</h2><div style="color:#3b3f45">${d.sum}</div><div class="chips">${d.chips.map(c=>`<span class="chip">${c}</span>`).join("")}</div></div>`;
+  let h=`<div class="dayhead"><div class="kicker"><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${d.color}"></span>${d.city?"凯恩斯 · ":""}${d.date} ${d.wk}</div><h2>${d.title}</h2><div style="color:#3b3f45">${d.sum}</div><div class="chips">${d.chips.map(c=>`<span class="chip">${c}</span>`).join("")}</div></div>`;
   if(d.variants){h+=`<div class="seg" role="tablist" aria-label="${d.variants.label}">${d.variants.opts.map(o=>`<button data-v="${o[0]}" class="${state.variant[d.id]===o[0]?"on":""}">${o[1]}</button>`).join("")}</div>`}
   h+=gmBlock(d);
   if(loadErr)h+=`<div class="warn">真实路线数据没加载到（${loadErr.message}），地图上暂时显示近似折线。</div>`;
@@ -354,7 +377,7 @@ function renderContent(){
   visibleItems(d).forEach((it,idx)=>{
     if(it.leg){const m=MODES[it.mode],info=legInfo(it);
       const km=info&&info.dist&&info.kind!=="schematic"&&!it.durOrig?`<span class="km">路线 ${fmtDist(info.dist)}</span>`:"";
-      h+=`<li class="leg" data-i="${idx}"><div></div><div class="rail"><i style="border-left-color:${m.c};border-left-style:${it.mode==="walk"?"dotted":"solid"}"></i></div><div class="body"><span class="mode">${m.ic} ${m.n}</span><span>${it.dur}</span>${it.note?`<span>· ${it.note}</span>`:""}${km}${NO_NAV.has(it.to)?"":`<a class="nav" href="${gmDir(it.from,it.to,it.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}${it.alt?`<span class="alt">替代：${it.alt}</span>`:""}</div></li>`;
+      h+=`<li class="leg" data-i="${idx}"><div></div><div class="rail"><i style="border-left-color:${m.c};border-left-style:${it.mode==="walk"?"dotted":"solid"}"></i></div><div class="body"><span class="mode">${m.ic} ${m.n}</span><span>${it.dur}</span>${it.note?`<span>· ${it.note}</span>`:""}${km}${!hasNav(it)?"":`<a class="nav" href="${gmDir(it.from,it.to,it.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}${it.alt?`<span class="alt">替代：${it.alt}</span>`:""}</div></li>`;
     }else{const pl=P[it.p];
       const badge=pl.home?`<span class="badge" style="background:#1F2328">家</span>`:`<span class="badge" style="background:${it.extra?"#9AA0A6":d.color}">${num[it.p]}</span>`;
       h+=`<li class="stop" data-p="${it.p}" data-i="${idx}"><div class="time">${it.t}</div>${badge}<div><h3>${it.h}${it.opt?'<span class="opt">可选</span>':""}</h3><div style="font-size:12px;color:#6B6F76">${pl.n}</div>${it.d?`<p>${it.d}</p>`:""}${it.tip?`<span class="tipline">${it.tip}</span>`:""}<div class="acts"><a class="nav" href="${gmPlace(pl)}" target="_blank" rel="noopener">Google 地图 ↗</a></div></div></li>`;
@@ -362,7 +385,7 @@ function renderContent(){
   });
   h+=`</ol>`;
   const i=DAYS.indexOf(d);
-  h+=`<div style="display:flex;justify-content:space-between;margin-top:16px">${i>0?`<a href="#" data-go="${DAYS[i-1].id}">← ${DAYS[i-1].date}</a>`:"<span></span>"}${i<DAYS.length-1?`<a href="#" data-go="${DAYS[i+1].id}">${DAYS[i+1].date} →</a>`:`<a href="#" data-go="">回总览</a>`}</div>`;
+  h+=`<div style="display:flex;justify-content:space-between;margin-top:16px">${i>0?`<a href="#" data-go="${DAYS[i-1].id}">← ${navLbl(DAYS[i-1],d)}</a>`:"<span></span>"}${i<DAYS.length-1?`<a href="#" data-go="${DAYS[i+1].id}">${navLbl(DAYS[i+1],d)} →</a>`:`<a href="#" data-go="">回总览</a>`}</div>`;
   content.innerHTML=h;
   content.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.variant[d.id]=b.dataset.v;state.sel=null;renderContent();render();renderLegend();fitDay()});
   content.querySelectorAll(".stop").forEach(li=>li.onclick=e=>{if(e.target.closest("a"))return;selectStop(d.id,li.dataset.p,false,+li.dataset.i)});
@@ -416,7 +439,7 @@ function selectStop(dayId,p,fromMap,idx){
 function renderOverview(){
   let h=`<div class="note blue" style="margin-top:0">总体思路：<b>住在 Glebe，离市中心 3–5 km</b>。进城最省事是打车（约 15–20 分钟），公交 431/433 路沿 Glebe Point Rd 进城也很方便。城里景点之间 1 km 内步行，远一点用火车/轻轨/渡轮，回家累了直接打车。</div>`;
   if(loadErr)h+=`<div class="warn">真实路线数据没加载到（${loadErr.message}），地图上暂时显示近似折线。</div>`;
-  DAYS.forEach(d=>h+=`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
+  DAYS.forEach((d,i)=>h+=(d.city&&!DAYS[i-1].city?`<h3 class="cityhd">凯恩斯 · ${d.date}–${DAYS[DAYS.length-1].date}</h3>`:"")+`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
   h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图，地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 25 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。</div>`;
   h+=`<div class="sec"><h3>出发前要订的</h3><ul>
   <li><b>歌剧院普通话导览</b>（25 日上午）：官网选 “Mandarin Tour”，约 1 小时，只用中文讲解。有“导览 + 用餐”套餐可选（餐点需在当天 18:00 前兑换）。</li>
@@ -450,28 +473,24 @@ function renderOverview(){
 
 /* ======================= 日历 ======================= */
 const YEAR=2026; // data.js 里只有月/日；11/24 是周二 → 2026 年
-// 悉尼每天的简称和简表：时间从行程里取（跟着方案切换走），这里只写短名字
+// 每天的简称和简表：时间从行程里取（跟着方案切换走），这里只写短名字。[地点, 短名, 指定时间(同一地点出现多次时)]
 const CAL={
   day1:{tag:["落地","夜景"],keys:[["home","抵达住处","12:00"],["fish","鱼市场午饭"],["dh","达令港 → 海滨步道"],["soh","歌剧院夜景"]]},
   day2:{tag:["歌剧院","大桥"],keys:[["soh","歌剧院中文导览"],["rbg","皇家植物园"],["hpb","军营博物馆"],["bstairs","走海港大桥"],["mpwharf","坐渡轮回"]]},
   day3:{tag:["动物园"],keys:[["cq","码头坐船"],["zootop","正门入园，往下逛"],["zoowharf","出园坐船回","16:15"]]},
   day4:{tag:["蓝山","一日团"],keys:[["meet","集合出发"],["bluemtn","三姐妹峰 + 三种缆车"],["chinatown","唐人街晚饭"]]},
   day5:{tag:["市集","休闲"],keys:[["glebemkt","Glebe 周六市集"],["usyd","悉尼大学"],["happypho","Happy Pho 午饭"],["bondi","Bondi 看海"],["chinatown","唐人街慢慢逛"]]},
-  day6:{tag:["退房","凯恩斯"],keys:[["home","收拾、退房","09:00"],["glebepointrd","早午餐"],["home","取行李去机场","11:00"]]}
+  day6:{tag:["退房","凯恩斯"],keys:[["home","收拾、退房","09:00"],["glebepointrd","早午餐"],["home","取行李去机场","11:00"]]},
+  cns1:{noCell:1,keys:[["c_airport","抵达凯恩斯机场"],["c_home","入住"],["c_lagoon","海滨 + 夜市（可选）"]]},
+  cns2:{tag:["大堡礁"],keys:[["c_reeffleet","Reef Fleet 码头上船","07:30"],["c_reef","大堡礁浮潜 / 玻璃底船"],["c_reeffleet","回到码头","约 17:00"]]},
+  cns3:{tag:["雨林","小火车"],keys:[["c_cnsstn","观光火车上山"],["c_kvillage","Kuranda 雨林小镇"],["c_skyk","Skyrail 缆车下山"],["c_home","回住处","约 17:00"]]},
+  cns4:{tag:["返程","去阿德"],keys:[["c_home","收拾、退房"],["c_airport","飞阿德莱德"]]}
 };
-// 悉尼之后：凯恩斯（只有日程，没有地图页；lines 是原话）
-const CAIRNS_C="#C8901A";
-const MORE=[
-  {id:"cns1",city:"凯恩斯",date:"11/29",wk:"周日",title:"到达凯恩斯",lines:["当天到达"],noCell:1},
-  {id:"cns2",city:"凯恩斯",date:"11/30",wk:"周一",title:"大堡礁出海一日游",tag:["大堡礁"],lines:["去大堡礁出海一日游（报一日团玩一天）"]},
-  {id:"cns3",city:"凯恩斯",date:"12/1",wk:"周二",title:"热带雨林小火车",tag:["雨林","小火车"],lines:["去凯恩斯热带雨林小火车（一日团玩一天）"]},
-  {id:"cns4",city:"凯恩斯",date:"12/2",wk:"周三",title:"返程，去阿德莱德",tag:["返程","去阿德"],lines:["返程，去阿德莱德"]}
-];
 function calItems(d){
   const vis=visibleItems(d);
   return ((CAL[d.id]||{}).keys||[]).map(([p,lab,t])=>{const it=vis.find(i=>!i.leg&&i.p===p&&(!t||i.t===t));return it&&{t:it.t,lab}}).filter(Boolean);
 }
-const tagOf=d=>CAL[d.id].tag.join(" · ");
+const tagOf=d=>(CAL[d.id].tag||[d.title]).join(" · ");
 const pad2=n=>String(n).padStart(2,"0");
 const isoOf=d=>{const [m,dd]=d.date.split("/").map(Number);return `${YEAR}-${pad2(m)}-${pad2(dd)}`};
 const isoUTC=iso=>Date.parse(iso+"T00:00:00Z");
@@ -482,9 +501,8 @@ function sydToday(){
 }
 function renderCalendar(){
   const today=sydToday(),cell={};
-  DAYS.forEach(d=>cell[isoOf(d)]={go:d.id,c:d.color,tag:CAL[d.id].tag,label:`${d.date} ${d.wk} ${tagOf(d)}`});
-  MORE.forEach(x=>{if(!x.noCell)cell[isoOf(x)]={to:x.id,c:CAIRNS_C,tag:x.tag,label:`${x.date} ${x.wk} ${x.city} ${x.title}`}});
-  const startIso=isoOf(DAYS[0]),endIso=isoOf(MORE.length?MORE[MORE.length-1]:DAYS[DAYS.length-1]);
+  DAYS.forEach(d=>{if(!CAL[d.id].noCell)cell[isoOf(d)]=d});
+  const startIso=isoOf(DAYS[0]),endIso=isoOf(DAYS[DAYS.length-1]);
   let status="";
   if(today&&today<startIso)status=`还有 ${Math.round((isoUTC(startIso)-isoUTC(today))/864e5)} 天出发`;
   else if(today&&today<=endIso)status=`今天是第 ${Math.round((isoUTC(today)-isoUTC(startIso))/864e5)+1} 天`;
@@ -496,25 +514,18 @@ function renderCalendar(){
   let h=`<div class="cal"><div class="mh"><b>${YEAR} 年 ${m1===m2?m1:`${m1}–${m2}`} 月</b><span class="status">${status}</span></div><div class="grid">`;
   h+="一二三四五六日".split("").map(w=>`<div class="wd">${w}</div>`).join("");
   for(let iso=from;iso<=to;iso=isoAdd(iso,1)){
-    const dn=+iso.slice(8),num=dn===1?`${+iso.slice(5,7)}/1`:dn,x=cell[iso],td=iso===today?" today":"";
-    if(x)h+=`<button class="c trip${td}" ${x.go?`data-go="${x.go}"`:`data-to="${x.to}"`} data-iso="${iso}" style="background:${x.c}1A;border-top-color:${x.c}" aria-label="${x.label}"><span class="n">${num}</span><span class="tag">${x.tag.map(t=>`<span>${t}</span>`).join("")}</span></button>`;
+    const dn=+iso.slice(8),num=dn===1?`${+iso.slice(5,7)}/1`:dn,d=cell[iso],td=iso===today?" today":"";
+    if(d)h+=`<button class="c trip${td}" data-go="${d.id}" data-iso="${iso}" style="background:${d.color}1A;border-top-color:${d.color}" aria-label="${cityName(d)} ${d.date} ${d.wk} ${tagOf(d)}"><span class="n">${num}</span><span class="tag">${CAL[d.id].tag.map(t=>`<span>${t}</span>`).join("")}</span></button>`;
     else h+=`<div class="c${td}" data-iso="${iso}"><span class="n">${num}</span></div>`;
   }
-  h+=`</div><div class="calkey"><span><i style="background:linear-gradient(90deg,${DAYS.map(d=>d.color).join(",")})"></i>悉尼：点日期看当天地图和详细行程</span><span><i style="background:${CAIRNS_C}"></i>凯恩斯</span></div></div>`;
-  h+=`<div class="agenda"><h3 class="city">悉尼 · ${DAYS[0].date}–${DAYS[DAYS.length-1].date}</h3>`;
-  DAYS.forEach(d=>{const td=isoOf(d)===today;
-    h+=`<div class="ag${td?" today":""}" data-go="${d.id}" data-day="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="hd">${d.date} ${d.wk}${td?'<em>今天</em>':""}<small>${tagOf(d)}</small></div><ul>${calItems(d).map(x=>`<li><span class="t">${x.t}</span><span>${x.lab}</span></li>`).join("")}</ul></div></div>`});
-  if(MORE.length){
-    h+=`<h3 class="city">${MORE[0].city} · ${MORE[0].date}–${MORE[MORE.length-1].date}</h3>`;
-    MORE.forEach(x=>{const td=isoOf(x)===today;
-      h+=`<div class="ag plain${td?" today":""}" id="ag-${x.id}" data-day="${x.id}"><div class="bar" style="background:${CAIRNS_C}"></div><div><div class="hd">${x.date} ${x.wk}${td?'<em>今天</em>':""}<small>${x.title}</small></div><ul>${x.lines.map(l=>`<li><span>${l}</span></li>`).join("")}</ul></div></div>`});
-    h+=`<div class="calnote">凯恩斯这几天目前只有日程安排，没有地图和详细路线。</div>`;
-  }
-  h+=`</div><button class="icsbtn" id="icsbtn" type="button">📅 加到手机日历（.ics）</button><div class="calnote">每天一条全天日程，悉尼的备注里是当天简表和这个网页的链接。苹果手机点了直接“添加全部”；华为手机下载后点开文件，用“日历”打开导入。</div>`;
+  h+=`</div><div class="calnote">点日期看当天的地图和详细行程。11/29 白天在悉尼退房，当天飞到凯恩斯。</div></div>`;
+  h+=`<div class="agenda">`;
+  DAYS.forEach((d,i)=>{const td=isoOf(d)===today;
+    if(!i||cityOf(DAYS[i-1])!==cityOf(d)){const ds=DAYS.filter(x=>cityOf(x)===cityOf(d));h+=`<h3 class="city">${cityName(d)} · ${ds[0].date}–${ds[ds.length-1].date}</h3>`}
+    h+=`<div class="ag${td?" today":""}" data-go="${d.id}" data-day="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="hd">${d.date} ${d.wk}${td?'<em>今天</em>':""}<small>${d.city?d.title:tagOf(d)}</small></div><ul>${calItems(d).map(x=>`<li><span class="t">${x.t}</span><span>${x.lab}</span></li>`).join("")}</ul></div></div>`});
+  h+=`</div><button class="icsbtn" id="icsbtn" type="button">📅 加到手机日历（.ics）</button><div class="calnote">每天一条全天日程，备注里是当天简表和这个网页的链接。苹果手机点了直接“添加全部”；华为手机下载后点开文件，用“日历”打开导入。</div>`;
   content.innerHTML=h;
   content.querySelectorAll("[data-go]").forEach(c=>c.onclick=()=>go(c.dataset.go));
-  content.querySelectorAll("[data-to]").forEach(c=>c.onclick=()=>{const el=document.getElementById("ag-"+c.dataset.to);if(!el)return;
-    content.querySelectorAll(".ag.flash").forEach(e=>e.classList.remove("flash"));el.classList.add("flash");revealRow(el)});
   document.getElementById("icsbtn").onclick=downloadIcs;
 }
 function icsText(){
@@ -525,10 +536,11 @@ function icsText(){
   const base=location.href.split("#")[0];
   const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
   const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:悉尼 · 凯恩斯行程"];
-  const ev=(uid,d,summary,desc,url)=>out.push("BEGIN:VEVENT",`UID:${uid}-${YEAR}@sydney-trip-map`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${ymd(d)}`,`DTEND;VALUE=DATE:${ymd(d,1)}`,
-      `SUMMARY:${esc(summary)}`,`DESCRIPTION:${esc(desc)}`,...(url?[`URL:${url}`]:[]),"TRANSP:TRANSPARENT","END:VEVENT");
-  DAYS.forEach(d=>ev(d.id,d,"悉尼 · "+tagOf(d),calItems(d).map(x=>`${x.t} ${x.lab}`).join("\n")+`\n\n${d.title}\n${base}#${d.id}`,`${base}#${d.id}`));
-  MORE.forEach(x=>ev(x.id,x,`${x.city} · ${x.title}`,x.lines.join("\n")));
+  DAYS.forEach(d=>{
+    const desc=calItems(d).map(x=>`${x.t} ${x.lab}`).join("\n")+`\n\n${d.title}\n${base}#${d.id}`;
+    out.push("BEGIN:VEVENT",`UID:${d.id}-${YEAR}@sydney-trip-map`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${ymd(d)}`,`DTEND;VALUE=DATE:${ymd(d,1)}`,
+      `SUMMARY:${esc(`${cityName(d)} · ${d.city?d.title:tagOf(d)}`)}`,`DESCRIPTION:${esc(desc)}`,`URL:${base}#${d.id}`,"TRANSP:TRANSPARENT","END:VEVENT");
+  });
   out.push("END:VCALENDAR");
   return out.map(fold).join("\r\n")+"\r\n";
 }
@@ -549,5 +561,5 @@ setTabsH(); // 日期标签渲染之后再量高度，地图才会正好吸在�
 restoreMapH(); // 手机上恢复上次拖好的地图高度
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(setTabsH);
 window.addEventListener("hashchange",()=>{const v=viewOfHash();if(v!==(state.view||state.day))go(v,false)});
-window.__app={map,state,ROUTES,GEO,go,selectStop,icsText,get markers(){return markers},get legLines(){return legLines}}; // 测试用
+window.__app={map,state,ROUTES,GEO,go,selectStop,icsText,NO_NAV:[...NO_NAV],get markers(){return markers},get legLines(){return legLines}}; // 测试用
 })();

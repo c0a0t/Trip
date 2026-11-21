@@ -13,7 +13,7 @@ import osm
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GEO = {k: tuple(v["ll"]) for k, v in json.loads((ROOT / "geo.json").read_text(encoding="utf-8")).items()}
-SRC = (ROOT / "data.js").read_text(encoding="utf-8")
+SRC = (ROOT / "data.js").read_text(encoding="utf-8") + (ROOT / "cairns.js").read_text(encoding="utf-8")
 LEGS = []
 for m in re.finditer(r'L\("(\w+)","(\w+)","(\w+)","([^"]*)"', SRC):
     k = f"{m[1]}:{m[2]}>{m[3]}"
@@ -52,6 +52,12 @@ FERRY_MANUAL = {
  "ferry:cq>zoowharf":  [GEO["cq"], (-33.8590, 151.2112), (-33.8560, 151.2117), (-33.8540, 151.2140), (-33.8543, 151.2190),
                         (-33.8530, 151.2232), (-33.8515, 151.2330), (-33.8495, 151.2375), (-33.8475, 151.2393), GEO["zoowharf"]],
  "ferry:mpwharf>cq":   [GEO["mpwharf"], (-33.8510, 151.2112), (-33.8540, 151.2118), (-33.8570, 151.2116), (-33.8592, 151.2112), GEO["cq"]],
+}
+
+# 凯恩斯出海船：Reef Fleet 码头 → Trinity Inlet → 航道出海 → 绕过 Cape Grafton 北侧 → Moore Reef（示意，以团为准）
+BOAT_MANUAL = {
+ "boat:c_reeffleet>c_reef": [GEO["c_reeffleet"], (-16.9195, 145.7830), (-16.9120, 145.7885), (-16.9000, 145.7975), (-16.8800, 145.8150),
+                             (-16.8550, 145.8450), (-16.8300, 145.8950), (-16.8300, 145.9600), (-16.8500, 146.0800), GEO["c_reef"]],
 }
 
 def simplify(pts, tol_m):
@@ -172,7 +178,7 @@ def is_water(lat, lng, z=16):
             tot += 1; water += abs(r - 170) < 22 and abs(g - 211) < 22 and abs(b - 223) < 22
     return water / tot >= 0.3
 
-def land_crossings(path, ignore_m=80, step=15):
+def land_crossings(path, ignore_m=80, step=15, z=16):
     """返回不在水面上的连续区段 [(起点, 长度m)]；首尾 ignore_m 内（码头/栈桥）不计"""
     total = osm.length(path); runs = []; cur = None; d0 = 0
     for i in range(1, len(path)):
@@ -180,7 +186,7 @@ def land_crossings(path, ignore_m=80, step=15):
         for j in range(k):
             t = j / k; p = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t); d = d0 + L * t
             if d < ignore_m or d > total - ignore_m: continue
-            if not is_water(*p):
+            if not is_water(*p, z=z):
                 if cur is None: cur = [p, d, d]
                 cur[2] = d
             elif cur is not None:
@@ -209,6 +215,24 @@ def build(key, mode, a, b, dur):
         else:
             info.update(kind="osrm-car", dist=round(dist), secs=round(secs), names=names[:40],
                         coords=rnd(simplify(coords, 25 if mode == "coach" else 4)))
+    elif mode == "boat":
+        base = key if key in BOAT_MANUAL else f"boat:{b}>{a}"
+        p = BOAT_MANUAL[base] if base == key else list(reversed(BOAT_MANUAL[base]))
+        runs = land_crossings(p, ignore_m=150, step=40, z=15)
+        print(f"   水面校验：非水面区段 {runs or '无'}" + ("" if not runs else "  !!穿陆地"))
+        info.update(kind="manual-waterway", dist=round(osm.length(p)), coords=rnd(p), water_check="ok" if not runs else runs,
+                    note="出海航线为示意，去哪片礁以所报的团为准")
+    elif mode == "cable":
+        # OSM 里 Skyrail 是一整条 gondola 线（Smithfield → Kuranda，约 7.5 km），直接用它的几何
+        ways = [e for e in osm.overpass('way["aerialway"="gondola"](-16.860,145.620,-16.810,145.710);out body geom;') if e.get("geometry")]
+        g = max(ways, key=lambda e: len(e["geometry"]))["geometry"]
+        p = [(x["lat"], x["lon"]) for x in g]
+        if osm.hav(p[0], A) > osm.hav(p[-1], A): p.reverse()
+        print(f"   {key}: 缆车线 {osm.length(p):.0f} m，端点偏差 起点 {osm.hav(p[0], A):.0f} m / 终点 {osm.hav(p[-1], B):.0f} m")
+        info.update(kind="osm-aerialway", dist=round(osm.length(p)), coords=rnd([A, *simplify(p, 3), B]))
+    elif mode == "train" and a.startswith("c_"):
+        p = rail_route('way["railway"="rail"](-16.930,145.620,-16.810,145.780);', A, B, key)
+        info.update(kind="osm-rail", dist=round(osm.length(p)), coords=rnd([A, *simplify(p, 4), B]))
     elif mode == "train":
         p = rail_route('way["railway"~"^(rail|subway)$"](-33.8760,151.2040,-33.8580,151.2160);', A, B, key)
         info.update(kind="osm-rail", dist=round(osm.length(p)), coords=rnd([A, *simplify(p, 3), B]))

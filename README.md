@@ -1,6 +1,6 @@
 # 悉尼 11.24–11.29 行程地图
 
-静态网页：`index.html` + `app.js` + `app.css` + `data.js`（行程数据，原样摘自 `../itinerary-source.html`）+ `geo.json`（核准坐标）+ `routes.json`（构建期算好的真实路线）。
+静态网页：`index.html` + `app.js` + `app.css` + `data.js`（悉尼行程数据，原样摘自 `../itinerary-source.html`）+ `cairns.js`（凯恩斯 11/29–12/2，按常见一日团补全，时间以团为准；住处待定）+ `geo.json`（核准坐标）+ `routes.json`（构建期算好的真实路线）。
 底图是 Leaflet + OpenStreetMap 标准瓦片；页面运行时不调用任何路线服务。
 
 ## 重新构建（只在改了地点或路段时需要）

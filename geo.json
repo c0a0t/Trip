@@ -253,9 +253,86 @@
  },
  "airport": {
   "ll": [
-   -33.93626,
-   151.16448
+   -33.93378,
+   151.17993
   ],
-  "src": "Nominatim: Sydney Airport T1 International（国际航站楼；国内航班请改 T2/T3）"
+  "src": "Nominatim: Sydney Airport T2 Domestic（国内航站楼，T3 就在旁边；29 日飞凯恩斯是国内航班）"
+ },
+ "c_airport": {
+  "ll": [
+   -16.8749,
+   145.75222
+  ],
+  "src": "Overpass: Cairns Airport 航站楼（International Terminal 以南的国内航站楼）"
+ },
+ "c_home": {
+  "ll": [
+   -16.92075,
+   145.77758
+  ],
+  "src": "示意位置：住处待定，先放在市中心 Shields St（City Place 一带，Nominatim）"
+ },
+ "c_lagoon": {
+  "ll": [
+   -16.91964,
+   145.77798
+  ],
+  "src": "Nominatim: Cairns Esplanade Lagoon"
+ },
+ "c_reeffleet": {
+  "ll": [
+   -16.92166,
+   145.78041
+  ],
+  "src": "Nominatim: Reef Fleet Terminal (ferry_terminal)"
+ },
+ "c_reef": {
+  "ll": [
+   -16.868,
+   146.208
+  ],
+  "src": "示意：Moore Reef 西缘外侧水面（OSM 礁区范围 146.212–146.252E），实际去哪片礁以团为准"
+ },
+ "c_cnsstn": {
+  "ll": [
+   -16.92567,
+   145.77126
+  ],
+  "src": "Nominatim: Cairns railway station, Bunda St"
+ },
+ "c_barron": {
+  "ll": [
+   -16.83644,
+   145.64298
+  ],
+  "src": "Nominatim: Barron Falls railway station"
+ },
+ "c_kuranda": {
+  "ll": [
+   -16.81848,
+   145.63909
+  ],
+  "src": "Nominatim: Kuranda railway station"
+ },
+ "c_kvillage": {
+  "ll": [
+   -16.81935,
+   145.63288
+  ],
+  "src": "Nominatim: Kuranda Heritage Market"
+ },
+ "c_skyk": {
+  "ll": [
+   -16.81913,
+   145.63909
+  ],
+  "src": "Nominatim: Skyrail Kuranda Terminal (aerialway/station)"
+ },
+ "c_skys": {
+  "ll": [
+   -16.84766,
+   145.69505
+  ],
+  "src": "Nominatim: Skyrail Smithfield Terminal (aerialway/station)"
  }
 }

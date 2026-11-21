@@ -126,12 +126,10 @@ nav.tabs::-webkit-scrollbar{display:none}
 .cal .c.trip:hover{filter:brightness(.97)}
 .cal .c.today{outline:2px solid var(--ink);outline-offset:-2px}
 .cal .c.today:not(.trip) .n{color:var(--ink);font-weight:700}
-.calkey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mute);margin:8px 2px 0}
-.calkey i{display:inline-block;width:14px;height:8px;border-radius:3px;margin-right:5px;vertical-align:1px}
 .agenda h3.city{font-size:14px;margin:16px 2px 4px}
 .agenda h3.city:first-child{margin-top:4px}
-.ag.plain{cursor:default}
-.ag.flash{border-color:#C8901A;box-shadow:0 0 0 1px #C8901A}
+.tabsep{flex:0 0 auto;align-self:center;font-size:12px;color:var(--mute);padding:0 2px 0 6px;border-left:1px solid var(--line);margin-left:2px}
+.cityhd{font-size:14px;margin:18px 2px 2px}
 .calnote{font-size:12px;color:var(--mute);margin:6px 2px 0}
 .ag{display:grid;grid-template-columns:5px 1fr;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:9px 12px 9px 0;margin:8px 0;cursor:pointer;overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ag:hover{border-color:#cfc8bb}

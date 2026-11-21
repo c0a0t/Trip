@@ -5,7 +5,7 @@ import json, pathlib, shutil
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
-FILES = ["index.html", "app.js", "app.css", "data.js", "geo.json", "routes.json"]
+FILES = ["index.html", "app.js", "app.css", "data.js", "cairns.js", "geo.json", "routes.json"]
 
 SITE.mkdir(exist_ok=True)
 for f in FILES:
