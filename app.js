@@ -61,10 +61,29 @@ map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank
 const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 mapwrap.classList.toggle("vivid",lsGet("basemap")==="vivid");
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
-  maxZoom:19,className:"basemap",
-  attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · 路线 <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">FOSSGIS OSRM</a>'
-}).addTo(map);
+// 底图：默认 OpenStreetMap；国内网络（含国内卡漫游）常常加载不出来，就自动换成 Esri 街道图，并记在本机
+const BASEMAPS={
+  osm:{url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",o:{maxZoom:19},
+    attr:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'},
+  esri:{url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",o:{maxZoom:19,maxNativeZoom:18},
+    attr:'底图 © <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>（HERE, Garmin, OpenStreetMap 贡献者等）'}
+};
+const ROUTE_ATTR=' · 路线 <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">FOSSGIS OSRM</a>';
+let baseKey=new URLSearchParams(location.search).get("tiles")||lsGet("tiles")||"osm",baseLayer=null;
+if(!BASEMAPS[baseKey])baseKey="osm";
+function setBase(k){
+  if(baseLayer)map.removeLayer(baseLayer);
+  baseKey=k;const b=BASEMAPS[k];
+  baseLayer=L.tileLayer(b.url,{...b.o,className:"basemap",attribution:b.attr+ROUTE_ATTR}).addTo(map);
+  if(k!=="osm")return;
+  // 8 秒内一张都没加载出来，或者一张没成功就失败了 4 张 → 换 Esri
+  const lay=baseLayer;let ok=0,bad=0;
+  const sw=()=>{if(lay!==baseLayer||ok)return;lsSet("tiles","esri");setBase("esri")};
+  lay.on("tileload",()=>{ok++});
+  lay.on("tileerror",()=>{if(++bad>=4)sw()});
+  setTimeout(sw,8000);
+}
+setBase(baseKey);
 L.control.zoom({position:"topright",zoomInTitle:"放大",zoomOutTitle:"缩小"}).addTo(map);
 // 自定义按钮：显示当天全部 / 展开地图（手机）
 const Btns=L.Control.extend({options:{position:"topright"},onAdd(){
@@ -454,7 +473,7 @@ function renderOverview(){
   let h=`<div class="note blue" style="margin-top:0">总体思路：<b>住在 Glebe，离市中心 3–5 km</b>。进城最省事是打车（约 15–20 分钟），公交 431/433 路沿 Glebe Point Rd 进城也很方便。城里景点之间 1 km 内步行，远一点用火车/轻轨/渡轮，回家累了直接打车。</div>`;
   if(loadErr)h+=`<div class="warn">真实路线数据没加载到（${loadErr.message}），地图上暂时显示近似折线。</div>`;
   DAYS.forEach((d,i)=>h+=(d.city&&!DAYS[i-1].city?`<h3 class="cityhd">凯恩斯 · ${d.date}–${DAYS[DAYS.length-1].date}</h3>`:"")+`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
-  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图，地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 25 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。<b>在国内网络、或用国内手机卡漫游时</b> Google 地图打不开：苹果手机点地点和路段旁边的“苹果地图”，安卓 / 华为手机点“本机地图”（用手机自带的地图打开目的地）。</div>`;
+  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图（国内网络加载不出来时，会自动换成 Esri 街道图），地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 25 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。<b>在国内网络、或用国内手机卡漫游时</b> Google 地图打不开：苹果手机点地点和路段旁边的“苹果地图”，安卓 / 华为手机点“本机地图”（用手机自带的地图打开目的地）。</div>`;
   h+=`<div class="sec"><h3>出发前要订的</h3><ul>
   <li><b>歌剧院普通话导览</b>（25 日上午）：官网选 “Mandarin Tour”，约 1 小时，只用中文讲解。有“导览 + 用餐”套餐可选（餐点需在当天 18:00 前兑换）。</li>
   <li><b>海德公园军营博物馆</b>（25 日）：免费，官网预约时段。</li>
@@ -575,5 +594,5 @@ setTabsH(); // 日期标签渲染之后再量高度，地图才会正好吸在�
 restoreMapH(); // 手机上恢复上次拖好的地图高度
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(setTabsH);
 window.addEventListener("hashchange",()=>{const v=viewOfHash();if(v!==(state.view||state.day))go(v,false)});
-window.__app={map,state,ROUTES,GEO,go,selectStop,icsText,ALT,NO_NAV:[...NO_NAV],get markers(){return markers},get legLines(){return legLines}}; // 测试用
+window.__app={map,state,ROUTES,GEO,go,selectStop,icsText,ALT,get baseKey(){return baseKey},NO_NAV:[...NO_NAV],get markers(){return markers},get legLines(){return legLines}}; // 测试用
 })();

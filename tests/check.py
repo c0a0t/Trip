@@ -32,7 +32,7 @@ def attach_console(page, bucket):
     page.on("console", lambda m: bucket.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
     page.on("pageerror", lambda e: bucket.append(f"pageerror: {e}"))
     # Leaflet 缩放/平移时会主动取消还没下完的瓦片（net::ERR_ABORTED），这是正常行为，不算报错
-    page.on("requestfailed", lambda r: None if ("tile.openstreetmap.org" in r.url and "ERR_ABORTED" in (r.failure or ""))
+    page.on("requestfailed", lambda r: None if (("tile.openstreetmap.org" in r.url or "arcgisonline.com" in r.url) and "ERR_ABORTED" in (r.failure or ""))
             else bucket.append(f"requestfailed: {r.url} {r.failure}"))
 
 def tiles_ok(page):
@@ -419,8 +419,35 @@ def mobile(pw, key):
     check(f"[{tag}] 控制台无报错", not errs, " | ".join(errs[:5]))
     br.close()
 
+def basemap_checks(pw):
+    # 国内网络：OpenStreetMap 瓦片打不开 → 自动换 Esri；?tiles=esri 直接用 Esri；测试页能打开
+    br = pw.chromium.launch()
+    ctx = br.new_context(viewport={"width": 1000, "height": 760})
+    page = ctx.new_page()
+    page.route("**/tile.openstreetmap.org/**", lambda r: r.abort())
+    page.goto(URL + "#day2"); page.wait_for_function("window.__app")
+    page.wait_for_timeout(500)
+    k0 = page.evaluate("__app.baseKey")
+    page.wait_for_function("__app.baseKey==='esri'", timeout=15000); wait_idle(page, 1500)
+    t = tiles_ok(page)
+    src = page.evaluate("[...document.querySelectorAll('.leaflet-tile')].map(x=>x.src).filter(u=>u.includes('arcgisonline')).length")
+    attr = page.inner_text(".leaflet-control-attribution")
+    check("[底图] OSM 被墙时自动换成 Esri", src > 4 and t["loaded"] == t["n"] and t["bad"] == 0 and "Esri" in attr, f"{k0} → esri, {t}, {attr[:40]}")
+    save_shot(page, OUT / "desktop-basemap-esri.png")
+    page.reload(); page.wait_for_function("window.__app"); page.wait_for_timeout(300)
+    check("[底图] 换过一次后记在本机，下次直接用 Esri", page.evaluate("__app.baseKey") == "esri")
+    ctx.close()
+    ctx = br.new_context(viewport={"width": 1000, "height": 760}); page = ctx.new_page()
+    page.goto(URL + "?tiles=esri#cns3"); page.wait_for_function("window.__app"); wait_idle(page, 1500)
+    t = tiles_ok(page)
+    check("[底图] ?tiles=esri 凯恩斯瓦片加载", page.evaluate("__app.baseKey") == "esri" and t["n"] >= 4 and t["loaded"] == t["n"] and t["bad"] == 0, str(t))
+    page.goto(URL + "tiletest.html"); page.wait_for_function("document.getElementById('sum').textContent.startsWith('结果')", timeout=25000)
+    check("[底图] 测试页三种底图都能加载（本机网络）", page.inner_text("#sum").count("能用") == 3 and "不能用" not in page.inner_text("#sum"), page.inner_text("#sum"))
+    br.close()
+
 with sync_playwright() as pw:
     desktop(pw)
+    basemap_checks(pw)
     for k in PROFILES: mobile(pw, k)
 fails = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(fails)}/{len(results)} 通过")
