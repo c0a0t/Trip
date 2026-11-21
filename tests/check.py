@@ -59,6 +59,30 @@ def sel_state(page):
                 stops:[...document.querySelectorAll('#content .stop.sel')].map(e=>e.dataset.p),
                 visible, popup: !!document.querySelector('.leaflet-popup')} }""")
 
+def china_checks(page, tag, want):
+    # 国内备用：Leaflet 从本站加载（不依赖 unpkg），苹果手机给“苹果地图”、安卓/华为给“本机地图”
+    r = page.evaluate("""() => ({ext:performance.getEntriesByType('resource').map(e=>e.name).filter(u=>/unpkg|jsdelivr|cdnjs/.test(u)),
+        vendor:[...document.scripts].some(s=>/vendor\/leaflet\/leaflet\.js$/.test(s.src)) && !!window.L && window.L.version})""")
+    check(f"[{tag}] Leaflet 从本站加载，不连外部 CDN", r["vendor"] == "1.9.4" and not r["ext"], str(r))
+    alt = page.evaluate("__app.ALT")
+    check(f"[{tag}] 替代地图类型 = {want or '无'}", alt == want, alt)
+    for d in ("day2", "cns3"):
+        page.evaluate(f"__app.go('{d}')"); wait_idle(page, 500)
+        info = page.evaluate("""() => ({legNav:document.querySelectorAll('.leg a.nav').length,
+            legAlt:[...document.querySelectorAll('.leg a.nav2')].map(a=>a.getAttribute('href')),
+            stops:document.querySelectorAll('.stop').length,
+            stopAlt:[...document.querySelectorAll('.stop a.nav2')].map(a=>a.getAttribute('href'))})""")
+        hrefs = info["legAlt"] + info["stopAlt"]
+        if not want:
+            check(f"[{tag}] {d}: 桌面不显示替代地图按钮", not hrefs, str(len(hrefs)))
+            continue
+        pre = "https://maps.apple.com/?" if want == "apple" else "geo:"
+        okfmt = all(h.startswith(pre) for h in hrefs)
+        if want == "apple":
+            okfmt = okfmt and all(("saddr=" in h and "daddr=" in h and "dirflg=" in h) for h in info["legAlt"])
+        check(f"[{tag}] {d}: 替代地图按钮 路段 {len(info['legAlt'])}/{info['legNav']}、地点 {len(info['stopAlt'])}/{info['stops']}",
+              len(info["legAlt"]) == info["legNav"] and len(info["stopAlt"]) == info["stops"] and okfmt, hrefs[0] if hrefs else "")
+
 def common_checks(page, tag):
     # 每天：路线全部来自 routes.json、图例、导航链接、Google 分段链接
     days = page.evaluate("DAYS.map(d=>d.id)")
@@ -162,6 +186,7 @@ def desktop(pw):
     d = dl.value; body = open(d.path(), encoding="utf-8").read()
     check("[桌面] 点“加到手机日历”下载 trip-calendar.ics", d.suggested_filename == "trip-calendar.ics" and body.count("BEGIN:VEVENT") == 10, d.suggested_filename)
     common_checks(page, "桌面")
+    china_checks(page, "桌面", "")
     page.evaluate("__app.go(null)"); wait_idle(page, 800)
     errs = [l for l in logs if not l.startswith("warning")]
     check("[桌面] 控制台无报错", not errs, " | ".join(errs[:5]))
@@ -387,6 +412,7 @@ def mobile(pw, key):
     shot("day3-ferry")
     calendar_checks(page, tag, shot)
     common_checks(page, tag)
+    china_checks(page, tag, "apple" if pf["engine"] == "webkit" else "geo")
     page.evaluate("__app.go(null)"); wait_idle(page, 1000)
     shot("overview")
     errs = [l for l in logs if not l.startswith("warning")]

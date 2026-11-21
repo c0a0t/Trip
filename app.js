@@ -305,6 +305,20 @@ const gmPlace=pl=>`https://www.google.com/maps/search/?api=1&query=${enc(pl.q||p
 const gmDir=(a,b,mode)=>`https://www.google.com/maps/dir/?api=1&origin=${enc(P[a].q||P[a].ll.join(","))}&destination=${enc(P[b].q||P[b].ll.join(","))}&travelmode=${GMODE[mode]}`;
 const shortN=id=>P[id].n.replace(/（.*?）/g,"").replace(/\s*·\s*89 Bay St/,"");
 const qOf=id=>P[id].q||P[id].ll.join(",");
+
+/* 苹果地图 / 安卓本机地图：国内网络、国内卡漫游时 Google 打不开，用它们替代 */
+const UA=navigator.userAgent;
+const ALT=/iPhone|iPad|iPod|Macintosh/.test(UA)?"apple":/Android|HarmonyOS/.test(UA)?"geo":"";
+const AFLG={walking:"w",driving:"d",transit:"r"};
+const llS=id=>P[id].ll.map(v=>(+v).toFixed(6)).join(",");
+function altPlace(id){const nm=enc(shortN(id));
+  if(ALT==="apple")return `<a class="nav2" href="https://maps.apple.com/?ll=${llS(id)}&q=${nm}" target="_blank" rel="noopener">苹果地图 ↗</a>`;
+  if(ALT==="geo")return `<a class="nav2" href="geo:${llS(id)}?q=${llS(id)}(${nm})">本机地图 ↗</a>`;
+  return ""}
+function altDir(a,b,mode){
+  if(ALT==="apple")return `<a class="nav2" href="https://maps.apple.com/?saddr=${llS(a)}&daddr=${llS(b)}&dirflg=${AFLG[GMODE[mode]]||"d"}" target="_blank" rel="noopener">苹果地图 ↗</a>`;
+  if(ALT==="geo")return altPlace(b);
+  return ""}
 function gmSegments(d){
   const segs=[];let cur=null;
   legsOf(d).forEach(lg=>{
@@ -377,10 +391,10 @@ function renderContent(){
   visibleItems(d).forEach((it,idx)=>{
     if(it.leg){const m=MODES[it.mode],info=legInfo(it);
       const km=info&&info.dist&&info.kind!=="schematic"&&!it.durOrig?`<span class="km">路线 ${fmtDist(info.dist)}</span>`:"";
-      h+=`<li class="leg" data-i="${idx}"><div></div><div class="rail"><i style="border-left-color:${m.c};border-left-style:${it.mode==="walk"?"dotted":"solid"}"></i></div><div class="body"><span class="mode">${m.ic} ${m.n}</span><span>${it.dur}</span>${it.note?`<span>· ${it.note}</span>`:""}${km}${!hasNav(it)?"":`<a class="nav" href="${gmDir(it.from,it.to,it.mode)}" target="_blank" rel="noopener">导航 ↗</a>`}${it.alt?`<span class="alt">替代：${it.alt}</span>`:""}</div></li>`;
+      h+=`<li class="leg" data-i="${idx}"><div></div><div class="rail"><i style="border-left-color:${m.c};border-left-style:${it.mode==="walk"?"dotted":"solid"}"></i></div><div class="body"><span class="mode">${m.ic} ${m.n}</span><span>${it.dur}</span>${it.note?`<span>· ${it.note}</span>`:""}${km}${!hasNav(it)?"":`<a class="nav" href="${gmDir(it.from,it.to,it.mode)}" target="_blank" rel="noopener">${ALT?"Google":"导航"} ↗</a>${altDir(it.from,it.to,it.mode)}`}${it.alt?`<span class="alt">替代：${it.alt}</span>`:""}</div></li>`;
     }else{const pl=P[it.p];
       const badge=pl.home?`<span class="badge" style="background:#1F2328">家</span>`:`<span class="badge" style="background:${it.extra?"#9AA0A6":d.color}">${num[it.p]}</span>`;
-      h+=`<li class="stop" data-p="${it.p}" data-i="${idx}"><div class="time">${it.t}</div>${badge}<div><h3>${it.h}${it.opt?'<span class="opt">可选</span>':""}</h3><div style="font-size:12px;color:#6B6F76">${pl.n}</div>${it.d?`<p>${it.d}</p>`:""}${it.tip?`<span class="tipline">${it.tip}</span>`:""}<div class="acts"><a class="nav" href="${gmPlace(pl)}" target="_blank" rel="noopener">Google 地图 ↗</a></div></div></li>`;
+      h+=`<li class="stop" data-p="${it.p}" data-i="${idx}"><div class="time">${it.t}</div>${badge}<div><h3>${it.h}${it.opt?'<span class="opt">可选</span>':""}</h3><div style="font-size:12px;color:#6B6F76">${pl.n}</div>${it.d?`<p>${it.d}</p>`:""}${it.tip?`<span class="tipline">${it.tip}</span>`:""}<div class="acts"><a class="nav" href="${gmPlace(pl)}" target="_blank" rel="noopener">Google 地图 ↗</a>${altPlace(it.p)}</div></div></li>`;
     }
   });
   h+=`</ol>`;
@@ -440,7 +454,7 @@ function renderOverview(){
   let h=`<div class="note blue" style="margin-top:0">总体思路：<b>住在 Glebe，离市中心 3–5 km</b>。进城最省事是打车（约 15–20 分钟），公交 431/433 路沿 Glebe Point Rd 进城也很方便。城里景点之间 1 km 内步行，远一点用火车/轻轨/渡轮，回家累了直接打车。</div>`;
   if(loadErr)h+=`<div class="warn">真实路线数据没加载到（${loadErr.message}），地图上暂时显示近似折线。</div>`;
   DAYS.forEach((d,i)=>h+=(d.city&&!DAYS[i-1].city?`<h3 class="cityhd">凯恩斯 · ${d.date}–${DAYS[DAYS.length-1].date}</h3>`:"")+`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
-  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图，地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 25 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。</div>`;
+  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图，地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 25 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。<b>在国内网络、或用国内手机卡漫游时</b> Google 地图打不开：苹果手机点地点和路段旁边的“苹果地图”，安卓 / 华为手机点“本机地图”（用手机自带的地图打开目的地）。</div>`;
   h+=`<div class="sec"><h3>出发前要订的</h3><ul>
   <li><b>歌剧院普通话导览</b>（25 日上午）：官网选 “Mandarin Tour”，约 1 小时，只用中文讲解。有“导览 + 用餐”套餐可选（餐点需在当天 18:00 前兑换）。</li>
   <li><b>海德公园军营博物馆</b>（25 日）：免费，官网预约时段。</li>
@@ -561,5 +575,5 @@ setTabsH(); // 日期标签渲染之后再量高度，地图才会正好吸在�
 restoreMapH(); // 手机上恢复上次拖好的地图高度
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(setTabsH);
 window.addEventListener("hashchange",()=>{const v=viewOfHash();if(v!==(state.view||state.day))go(v,false)});
-window.__app={map,state,ROUTES,GEO,go,selectStop,icsText,NO_NAV:[...NO_NAV],get markers(){return markers},get legLines(){return legLines}}; // 测试用
+window.__app={map,state,ROUTES,GEO,go,selectStop,icsText,ALT,NO_NAV:[...NO_NAV],get markers(){return markers},get legLines(){return legLines}}; // 测试用
 })();

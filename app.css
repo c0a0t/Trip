@@ -83,6 +83,7 @@ nav.tabs::-webkit-scrollbar{display:none}
 .leg .body{padding:4px 0 6px;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .leg .mode{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--ink)}
 .leg .nav{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:0 8px;background:#fff}
+.leg .nav2,.stop .acts .nav2{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:0 8px;background:#fff;display:inline-block;margin-left:6px}
 .leg .alt{flex-basis:100%;font-size:12px;color:#6B6F76}
 .leg .km{font-size:11.5px;color:#8a8f96}
 .gm{background:#fff;border:1px solid var(--line);border-radius:12px;margin:12px 0;overflow:hidden}
@@ -162,7 +163,7 @@ nav.tabs::-webkit-scrollbar{display:none}
     -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
   .resizer span{width:44px;height:5px;border-radius:3px;background:#C9C3B8;transition:background .15s,width .15s}
   .mapwrap.resizing .resizer span{background:#8E877A;width:60px}
-  .leg .nav{padding:3px 10px;font-size:12.5px}
+  .leg .nav,.leg .nav2,.stop .acts .nav2{padding:3px 10px;font-size:12.5px}
   .tab{padding:6px 12px}
   .stop{padding:10px 6px}
   .stop,.leg,.daycard,.ag{scroll-margin-top:calc(var(--tabsH) + var(--mapH) + 12px)}
