@@ -178,7 +178,7 @@ def desktop(pw):
     with page.expect_download() as dl:
         page.click("#icsbtn")
     d = dl.value; body = open(d.path(), encoding="utf-8").read()
-    check("[桌面] 点“加到手机日历”下载 trip-calendar.ics", d.suggested_filename == "trip-calendar.ics" and body.count("BEGIN:VEVENT") == 20, d.suggested_filename)
+    check("[桌面] 点“加到手机日历”下载 trip-calendar.ics", d.suggested_filename == "trip-calendar.ics" and body.count("BEGIN:VEVENT") == 21, d.suggested_filename)
     common_checks(page, "桌面")
     china_checks(page, "桌面", "")
     page.evaluate("__app.go(null)"); wait_idle(page, 800)
@@ -231,15 +231,15 @@ def calendar_checks(page, tag, shot):
     check(f"[{tag}] 日历：2026 年 11–12 月，11/16–12/13 四周", "2026 年 11–12 月" in st["head"] and cal_days[:1] == ["2026-11-16"] and cal_days[-1:] == ["2026-12-13"] and len(cal_days) == 28, f"{st['head']} {cal_days[:1]}…{cal_days[-1:]} n={len(cal_days)}")
     want_cells = ["24 落地 夜景", "25 奥莱 始祖鸟", "26 歌剧院 大桥", "27 动物园", "28 蓝山 一日团", "29 皮划艇 Bondi", "30 退房 凯恩斯",
                   "12/1 大堡礁", "2 库兰达 缆车火车", "3 海钓", "4 休整", "5 退房 阿德莱德",
-                  "6 市集 做饭", "7 奔富 酒庄", "8 退房 墨尔本", "9 大洋路 十二门徒", "10 蒸汽 小火车"]
-    check(f"[{tag}] 11/24–12/10 每天一格有简称（17 格）", st["cells"] == want_cells, str(st["cells"]))
+                  "6 市集 做饭", "7 奔富 酒庄", "8 退房 墨尔本", "9 大洋路 十二门徒", "10 蒸汽 小火车", "11 退房 返程"]
+    check(f"[{tag}] 11/24–12/11 每天一格有简称（18 格）", st["cells"] == want_cells, str(st["cells"]))
     ag = st["ag"]
-    check(f"[{tag}] 每日简表：20 页（换城市那天出发 / 到达各一张），每条带时间", len(ag) == 20 and all(1 <= len(a) <= 5 for a in ag)
+    check(f"[{tag}] 每日简表：21 页（换城市那天出发 / 到达各一张），每条带时间", len(ag) == 21 and ag[20] == ["按航班 收拾、退房", "按航班 返程回家"] and all(1 <= len(a) <= 5 for a in ag)
           and ag[0][0] == "12:00 抵达住处" and ag[1][0] == "10:00 DFO 奥特莱斯" and "16:15 出园坐船回" in ag[3] and "11:00 取行李去机场" in ag[6]
           and ag[7][0] == "按航班 抵达凯恩斯机场" and "约 11:00 浮潜 / 玻璃底船 / 午餐" in ag[8] and ag[9][0] == "约 08:30 缆车上山"
           and ag[12][-1] == "按航班 飞阿德莱德" and "17:30 在家做饭" in ag[14] and ag[19][0] == "09:00 坐火车去 Belgrave", str(ag))
     cities = page.evaluate("[...document.querySelectorAll('.agenda h3.city')].map(h=>h.innerText)")
-    check(f"[{tag}] 简表按城市分组", cities == ["悉尼 · 11/24–11/30", "凯恩斯 · 11/30–12/5", "阿德莱德 · 12/5–12/8", "墨尔本 · 12/8–12/10"], str(cities))
+    check(f"[{tag}] 简表按城市分组", cities == ["悉尼 · 11/24–11/30", "凯恩斯 · 11/30–12/5", "阿德莱德 · 12/5–12/8", "墨尔本 · 12/8–12/11"], str(cities))
     ov = page.evaluate("""() => { const bad=[...document.querySelectorAll('.cal .c, .ag')].filter(e=>e.scrollWidth>e.clientWidth+1).length;
         return {sw:document.documentElement.scrollWidth, vw:innerWidth, bad} }""")
     check(f"[{tag}] 日历不撑出横向滚动、格子文字不溢出", ov["sw"] <= ov["vw"] and ov["bad"] == 0, str(ov))
@@ -258,8 +258,10 @@ def calendar_checks(page, tag, shot):
     page.evaluate("window.__TODAY='2026-12-10'; __app.go('cal')"); page.wait_for_timeout(200)
     s5 = page.evaluate("[document.querySelector('.cal .mh .status').innerText, (document.querySelector('.cal .c.today')||{dataset:{}}).dataset.go]")
     page.evaluate("window.__TODAY='2026-12-11'; __app.go('cal')"); page.wait_for_timeout(200)
+    s6 = page.evaluate("[document.querySelector('.cal .mh .status').innerText, (document.querySelector('.cal .c.today')||{dataset:{}}).dataset.go]")
+    page.evaluate("window.__TODAY='2026-12-12'; __app.go('cal')"); page.wait_for_timeout(200)
     s4 = page.inner_text(".cal .mh .status")
-    check(f"[{tag}] 凯恩斯、墨尔本那几天也标今天、结束后显示已结束", s3 == {"s": "今天是第 8 天", "cell": "cns2", "ag": "cns2"} and s5 == ["今天是第 17 天", "mel3"] and s4 == "行程已结束", f"{s3} | {s5} | {s4}")
+    check(f"[{tag}] 凯恩斯、墨尔本那几天也标今天、结束后显示已结束", s3 == {"s": "今天是第 8 天", "cell": "cns2", "ag": "cns2"} and s5 == ["今天是第 17 天", "mel3"] and s6 == ["今天是第 18 天", "mel4"] and s4 == "行程已结束", f"{s3} | {s5} | {s6} | {s4}")
     page.evaluate("delete window.__TODAY; __app.go('cal')"); page.wait_for_timeout(200)
     # .ics
     ics = page.evaluate("__app.icsText()")
@@ -269,10 +271,10 @@ def calendar_checks(page, tag, shot):
     starts = [l.split(":")[1] for l in lines if l.startswith("DTSTART")]
     longest = max(len(l.encode("utf-8")) for l in lines)
     unfold = ics.replace(CRLF + " ", "")
-    want_starts = [f"202611{d}" for d in range(24, 31)] + ["20261130"] + [f"202612{d:02d}" for d in range(1, 6)] + ["20261205", "20261206", "20261207", "20261208", "20261208", "20261209", "20261210"]
-    check(f"[{tag}] .ics：20 个全天日程（11/24–12/10），折行合规", ev == 20 and starts == want_starts and longest <= 75
+    want_starts = [f"202611{d}" for d in range(24, 31)] + ["20261130"] + [f"202612{d:02d}" for d in range(1, 6)] + ["20261205", "20261206", "20261207", "20261208", "20261208", "20261209", "20261210", "20261211"]
+    check(f"[{tag}] .ics：21 个全天日程（11/24–12/11），折行合规", ev == 21 and starts == want_starts and longest <= 75
           and "SUMMARY:悉尼 · 动物园" in unfold and "SUMMARY:凯恩斯 · 大堡礁：Reef Magic 坐船去、直升机飞回" in unfold
-          and "SUMMARY:墨尔本 · 普芬比利蒸汽小火车" in unfold and "X-WR-CALNAME:澳洲行程 11/24–12/10" in unfold and "DTEND;VALUE=DATE:20261211" in unfold
+          and "SUMMARY:墨尔本 · 普芬比利蒸汽小火车" in unfold and "X-WR-CALNAME:澳洲行程 11/24–12/11" in unfold and "DTEND;VALUE=DATE:20261212" in unfold
           and "#day3" in unfold and ics.endswith(CRLF), f"ev={ev} starts={starts} longest={longest}")
     # 凯恩斯格子 → 进凯恩斯那天，地图跳到凯恩斯；再回悉尼，地图跳回悉尼
     page.click(".cal .c.trip[data-go='cns2']"); wait_idle(page, 1500)

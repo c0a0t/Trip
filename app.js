@@ -483,7 +483,7 @@ function renderOverview(){
   DAYS.forEach((d,i)=>h+=(i&&cityOf(DAYS[i-1])!==cityOf(d)?`<h3 class="cityhd">${cityName(d)} · ${span(cityOf(d))}</h3>`:"")+`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
   h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图（国内网络加载不出来时，会自动换成 Esri 街道图），地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨、缆车、普芬比利小火车按 OSM 里的线路画；动物园园内、皮划艇、出海船、直升机的路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 26 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。<b>在国内网络、或用国内手机卡漫游时</b> Google 地图打不开：苹果手机点地点和路段旁边的“苹果地图”，安卓 / 华为手机点“本机地图”（用手机自带的地图打开目的地）。</div>`;
   h+=`<div class="sec"><h3>出发前要订的</h3><ul>
-  <li><b>住处和机票</b>：悉尼加住 11/29 晚、11/30 退房；悉尼 → 凯恩斯 11/30；凯恩斯住 11/30–12/5（5 晚）；凯恩斯 → 阿德莱德 12/5；阿德莱德住 12/5–12/8（要有厨房）；阿德莱德 → 墨尔本 12/8；墨尔本住处。</li>
+  <li><b>住处和机票</b>：悉尼加住 11/29 晚、11/30 退房；悉尼 → 凯恩斯 11/30；凯恩斯住 11/30–12/5（5 晚）；凯恩斯 → 阿德莱德 12/5；阿德莱德住 12/5–12/8（要有厨房）；阿德莱德 → 墨尔本 12/8；墨尔本住 12/8–12/11（3 晚）；墨尔本返程 12/11（还没订）。</li>
   <li><b>歌剧院普通话导览</b>（26 日上午）：官网选 “Mandarin Tour”，约 1 小时，只用中文讲解。有“导览 + 用餐”套餐可选（餐点需在当天 18:00 前兑换）。原来订了 25 日的要改期。</li>
   <li><b>海德公园军营博物馆</b>（26 日）：免费，官网预约时段。</li>
   <li><b>塔龙加动物园</b>（27 日）：跟团就订团；自己去就在官网买门票（在线比门口便宜），渡轮刷卡即可，或买“渡轮 + 门票”套票。</li>
@@ -547,7 +547,8 @@ const CAL={
   adl4:{tag:["退房","墨尔本"],keys:[["a_home","收拾、退房"],["a_airport","飞墨尔本"]]},
   mel1:{noCell:1,keys:[["m_airport","抵达墨尔本"],["m_home","入住"]]},
   mel2:{tag:["大洋路","十二门徒"],keys:[["m_meet","集合出发","07:00"],["m_arch","纪念拱门"],["m_12a","十二门徒"],["m_meet","回到市区","约 20:00"]]},
-  mel3:{tag:["蒸汽","小火车"],keys:[["m_flinders","坐火车去 Belgrave","09:00"],["m_pbbel","普芬比利上车","约 10:30"],["m_lakeside","Lakeside 午饭"]]}
+  mel3:{tag:["蒸汽","小火车"],keys:[["m_flinders","坐火车去 Belgrave","09:00"],["m_pbbel","普芬比利上车","约 10:30"],["m_lakeside","Lakeside 午饭"]]},
+  mel4:{tag:["退房","返程"],keys:[["m_home","收拾、退房"],["m_airport","返程回家"]]}
 };
 function calItems(d){
   const vis=visibleItems(d);
@@ -598,7 +599,7 @@ function icsText(){
   const ymd=(d,plus)=>isoAdd(isoOf(d),plus||0).replace(/-/g,"");
   const base=location.href.split("#")[0];
   const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
-  const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:澳洲行程 11/24–12/10"];
+  const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:澳洲行程 11/24–12/11"];
   DAYS.forEach(d=>{
     const desc=calItems(d).map(x=>`${x.t} ${x.lab}`).join("\n")+`\n\n${d.title}\n${base}#${d.id}`;
     out.push("BEGIN:VEVENT",`UID:${d.id}-${YEAR}@sydney-trip-map`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${ymd(d)}`,`DTEND;VALUE=DATE:${ymd(d,1)}`,
