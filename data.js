@@ -1,4 +1,6 @@
-/* 行程数据：原样摘自 itinerary-source.html（P / 近似路径 / MODES / GMODE / DAYS），未改动内容 */
+/* 行程数据：最初摘自 itinerary-source.html（P / 近似路径 / MODES / GMODE / DAYS）。
+   2026-11-22 按用户的新安排调整：11/25 购物日（新）、原 25/26/27 号顺延到 26/27/28 号、11/29 日出皮划艇 + Bondi（新）、
+   原 28 号休闲日取消（Glebe 市集只在周六开）、11/30 退房飞凯恩斯。 */
 /* ======================= 地点 ======================= */
 const P={
  home:{n:"住处 · 89 Bay St",ll:[-33.8805,151.1938],q:"89 Bay St, Glebe NSW 2037",home:1},
@@ -36,7 +38,12 @@ const P={
  bondi:{n:"邦迪海滩",ll:[-33.8908,151.2727],q:"Bondi Beach"},
  icebergs:{n:"Bondi Icebergs 观景",ll:[-33.8948,151.2733],q:"Bondi Icebergs Club"},
  glebepointrd:{n:"Glebe Point Rd 早午餐",ll:[-33.8792,151.1878],q:"Glebe Point Rd, Glebe NSW"},
- airport:{n:"悉尼机场（往南约 9 km）",ll:[-33.9150,151.1905],q:"Sydney Airport",edge:"s"}
+ airport:{n:"悉尼机场（往南约 9 km）",ll:[-33.9150,151.1905],q:"Sydney Airport",edge:"s"},
+ s_dfo:{n:"DFO Homebush 奥特莱斯",ll:[-33.85536,151.07675],q:"DFO Homebush, 3-5 Underwood Rd, Homebush NSW"},
+ s_mill:{n:"始祖鸟折扣店（The Mill, Alexandria）",ll:[-33.91060,151.19378],q:"The Mill, 41-43 Bourke Rd, Alexandria NSW"},
+ s_lavender:{n:"Lavender Bay 皮划艇集合点",ll:[-33.84397,151.20713],q:"1 Railway Ave, Lavender Bay NSW"},
+ s_kayak:{n:"海港大桥边看日出（划艇示意位置）",ll:[-33.85000,151.20850],q:"Lavender Bay, Sydney"},
+ s_bronte:{n:"Bronte 海滩",ll:[-33.90362,151.26829],q:"Bronte Beach, Sydney"}
 };
 
 /* ======================= 路线走向（近似） ======================= */
@@ -52,12 +59,15 @@ const MODES={
  lr:{n:"轻轨",ic:"🚊",c:"#C0392B",dash:"",w:4},
  train:{n:"火车",ic:"🚆",c:"#C0392B",dash:"",w:4},
  ferry:{n:"渡轮",ic:"⛴️",c:"#1C6FD6",dash:"",w:4},
- coach:{n:"旅游大巴",ic:"🚐",c:"#4A4F57",dash:"10 5",w:3.5}
+ coach:{n:"旅游大巴",ic:"🚐",c:"#4A4F57",dash:"10 5",w:3.5},
+ kayak:{n:"皮划艇",ic:"🛶",c:"#0F8B8D",dash:"4 5",w:4}
 };
 const GMODE={walk:"walking",taxi:"driving",bus:"transit",lr:"transit",train:"transit",ferry:"transit",coach:"driving"};
 
 /* ======================= 行程 ======================= */
 const L=(mode,from,to,dur,note,path,alt,vv)=>({leg:1,mode,from,to,dur,note,path,alt:alt||null,vv:vv||null});
+// 跟团大巴、观光火车这类段：Google 地图给不出对应路线，不给“导航”
+const N=(...a)=>Object.assign(L(...a),{nonav:1});
 const DAYS=[
 {id:"day1",date:"11/24",wk:"周二",color:"#E07A2F",title:"落地 · Glebe → 达令港 → 歌剧院夜景",
  sum:"中午在家附近吃（新鱼市场就在步行 10 分钟处），买齐日用品，下午沿海滨一路走到环形码头，日落后看歌剧院亮灯。",
@@ -85,7 +95,24 @@ const DAYS=[
   {t:"20:45",p:"broadway",h:"超市买明天早餐",d:"明天要走一整天，早餐买丰盛些：吐司、鸡蛋、培根/火腿、牛油果、酸奶、水果、牛奶，再买点路上喝的水和零食。",tip:"出发前在 Google Maps 确认 Coles 当晚营业时间"},
   L("walk","broadway","home","约 6 分钟","",[[-33.8837,151.1946],[-33.8805,151.1938]])
  ]},
-{id:"day2",date:"11/25",wk:"周三",color:"#C2416B",title:"歌剧院中文导览 → 植物园 → 军营博物馆 → 走海港大桥 → 渡轮回",
+{id:"shop",date:"11/25",wk:"周三",color:"#1F8FB8",title:"购物日：DFO Homebush 奥特莱斯 → 始祖鸟折扣店",
+ sum:"黑五前两天去奥特莱斯，人比周五少很多，不少店这一周已经开始打折。上午逛 DFO，下午去 Alexandria 的始祖鸟折扣店；没有合适的就直接回家，不去市区。",
+ chips:["打车 ×3","DFO 大部分店 10:00–18:00"],
+ notes:[["blue","始祖鸟折扣店在 The Mill（Bourke Road），是快闪（pop-up）店，2026 年年中才开，官网门店列表里还没有。出发前在地图 App 搜 “Arc'teryx Alexandria” 或打电话，确认还开着、几点关门。DFO Homebush 里没有始祖鸟。"],
+        ["","退税（TRS）：同一家店一次买满 A$300（含税）就能办，要店家开 tax invoice，离开澳洲时在国际机场出发区办。回国注意免税额度（个人自用物品一般 5000 元人民币）。"]],
+ items:[
+  {t:"09:00",p:"home",h:"早餐",d:"穿好走的鞋，带一个可折叠的大购物袋。"},
+  L("taxi","home","s_dfo","约 25–30 分钟 · 约 13 km",""),
+  {t:"10:00",p:"s_dfo",h:"DFO Homebush 奥特莱斯",d:"运动、服装、户外（The North Face、Kathmandu、Macpac 等）、家居都有。午饭在里面的美食区吃。",tip:"官网显示大部分店 10:00–18:00"},
+  L("taxi","s_dfo","s_mill","约 25 分钟 · 约 15 km",""),
+  {t:"14:00",p:"s_mill",h:"始祖鸟折扣店（The Mill, Alexandria）",d:"始祖鸟在悉尼的第一家折扣店。没有合适的就算了，不再去市区。",tip:"快闪店，去之前确认还开着、营业时间"},
+  L("taxi","s_mill","home","约 10–15 分钟 · 约 5 km",""),
+  {t:"15:30",p:"home",h:"回家放东西，休息",d:""},
+  L("walk","home","broadway","约 6 分钟",""),
+  {t:"18:30",p:"broadway",h:"晚饭：Broadway 一带",d:"就在家旁边；想吃中餐也可以走去唐人街。"},
+  L("walk","broadway","home","约 6 分钟","")
+ ]},
+{id:"day2",date:"11/26",wk:"周四",color:"#C2416B",title:"歌剧院中文导览 → 植物园 → 军营博物馆 → 走海港大桥 → 渡轮回",
  sum:"按“由东往南再往北”的顺序走，不走回头路：导览后穿植物园到海德公园一带，午饭后坐 1 站火车回码头，下午走大桥到北岸看蓝花楹，最后坐渡轮回来。",
  chips:["步行约 9 km（含导览约 2.5 km）","打车 ×2 · 火车 1 站 · 渡轮"],
  notes:[["green","海港大桥离歌剧院很近：从歌剧院走到大桥上桥口只要 15 分钟左右，过桥本身约 20 分钟。"],["","省力版：跳过 Secret Garden 少走约 1.5 km；如果下午走不动，可以不走桥，改从 Circular Quay 坐渡轮到 Milsons Point 看蓝花楹，再坐回来——从水面看大桥同样震撼。"]],
@@ -122,7 +149,7 @@ const DAYS=[
   {t:"18:15",p:"cq",h:"晚饭：The Rocks / Circular Quay",d:"The Rocks 有不少老酒馆和餐厅，想省事就在码头一带。"},
   L("taxi","cq","home","约 15–20 分钟","",rev(DRIVE_CITY))
  ]},
-{id:"day3",date:"11/26",wk:"周四",color:"#2E8B57",title:"塔龙加动物园一日",
+{id:"day3",date:"11/27",wk:"周五",color:"#2E8B57",title:"塔龙加动物园一日",
  sum:"无论跟团还是自己去，核心路线一样：环形码头坐船 12 分钟到动物园码头。自己去的话，先坐公交上山到正门，再一路往下逛到下入口，全程下坡最省力。",
  chips:["园内步行约 4–6 km（下坡为主）","渡轮 ×2"],
  variants:{label:"选择方案",opts:[["B","方案 B · 自己买票去"],["A","方案 A · 跟团"]],def:"B"},
@@ -143,7 +170,7 @@ const DAYS=[
   {t:"17:00",p:"cq",h:"回市区",d:"累了直接打车回家，晚饭在 Glebe Point Rd 一带随便吃，早点休息——明天要早起。"},
   L("taxi","cq","home","约 15–20 分钟","",rev(DRIVE_CITY))
  ]},
-{id:"day4",date:"11/27",wk:"周五",color:"#6B5BD2",title:"蓝山一日团（缆车为主，少徒步）",
+{id:"day4",date:"11/28",wk:"周六",color:"#6B5BD2",title:"蓝山一日团（缆车为主，少徒步）",
  sum:"选团时认准含 Scenic World 三种缆车、Echo Point 看三姐妹峰、不含长距离徒步的行程。回来多在市中心散团，顺路在唐人街吃晚饭。",
  chips:["车程单程约 1.5–2 小时","步行少（观景台 + 短木栈道）"],
  notes:[["blue","选团清单：① Scenic World 的 Railway（全球最陡的轨道缆车）、Skyway（玻璃底空中缆车）、Cableway（大型缆车）三项都包含；② Echo Point 看三姐妹峰；③ 不含 Grand Canyon、Wentworth Falls 下行这类长徒步；④ 中文导游；⑤ 集合点离 Glebe 近（Town Hall / Darling Harbour / Haymarket 一带最方便）。"],["","蓝山比市区凉不少，早晚带件外套。有的团附加野生动物园或回程坐游船，按体力决定，别选回程太晚的。"]],
@@ -158,41 +185,44 @@ const DAYS=[
   L("taxi","chinatown","home","约 10 分钟 · 约 2 km","",[[-33.8788,151.2039],[-33.8810,151.2030],[-33.8838,151.1952],[-33.8805,151.1938]],"或沿 Broadway 坐公交几站"),
   {t:"20:00",p:"home",h:"早点休息",d:""}
  ]},
-{id:"day5",date:"11/28",wk:"周六",color:"#1F8FB8",title:"休闲日：Glebe 市集 → 悉尼大学 → Happy Pho → 海边或唐人街",
- sum:"周六上午正好赶上家门口的 Glebe 市集；走去悉尼大学；中午去吃你记下的 Happy Pho（它周日不营业，只能放今天）；下午二选一。",
- chips:["步行约 3–4 km","打车 ×2"],
- variants:{label:"下午怎么过",opts:[["A","A · 去 Bondi 看海"],["B","B · 唐人街慢慢逛"]],def:"A"},
- notes:[["","想再找一处蓝花楹：从悉尼大学打车 5 分钟到 Erskineville 的 Ashmore St（地图上灰色可选点），再去吃 Happy Pho。花期已近尾声，25 号在 Kirribilli 看得满意就不用专门去。"]],
+{id:"kayak",date:"11/29",wk:"周日",color:"#E0475B",title:"日出皮划艇 → Bondi 看海",
+ sum:"清早在 Lavender Bay 划皮划艇看日出，太阳从歌剧院方向升起，海港大桥就在旁边。划完吃早饭、回家补觉，下午去 Bondi 看海，傍晚收拾行李。",
+ chips:["划艇约 2 小时（双人艇，不用经验）","打车 ×4","日出约 5:40"],
+ notes:[["blue","皮划艇要提前预约。几家公司的集合时间、地点略有不同（多数在 1 Railway Ave, Lavender Bay），以你订的为准；网上价格约每人 A$125–145。风大或下雨可能取消，订的时候问清改期、退款。"],
+        ["","地图上的划艇路线是示意。有人行动不方便的话，订之前先问商家能不能安排。"]],
  items:[
-  {t:"09:00",p:"home",h:"慢悠悠吃早餐",d:""},
-  L("walk","home","glebemkt","约 8 分钟 · 600 m","",[[-33.8805,151.1938],[-33.8822,151.1925],[-33.8817,151.1902]]),
-  {t:"10:00",p:"glebemkt",h:"Glebe 周六市集",d:"每周六 10:00–16:00，在 Glebe Public School 里：古着、手作、小吃、现场音乐。"},
-  L("walk","glebemkt","usyd","约 15 分钟 · 1 km","过 Parramatta Rd 进校园",[[-33.8817,151.1902],[-33.8838,151.1912],[-33.8850,151.1912],[-33.8861,151.1891]]),
-  {t:"11:30",p:"usyd",h:"悉尼大学主楼 Quadrangle",d:"哥特式砂岩主楼和草坪，拍照很好看；校园里也有蓝花楹。"},
-  {t:"可选",p:"ashmore",h:"Ashmore St 蓝花楹（Erskineville）",opt:1,extra:1,d:"小众蓝花楹街，从悉尼大学打车约 5 分钟。"},
-  L("taxi","usyd","happypho","约 15 分钟 · 约 5.5 km","",[[-33.8861,151.1891],[-33.8885,151.1950],[-33.8925,151.2050],[-33.8995,151.2150],[-33.9060,151.2215],[-33.9093,151.2226]]),
-  {t:"12:45",p:"happypho",h:"午饭：Happy Pho",d:"在 Kensington（UNSW 对面）的越南粉小店。",tip:"网上信息：周一至周六 10:00–21:00，周日休息——去之前在 Google Maps 再确认"},
-  L("taxi","happypho","bondi","约 15–20 分钟 · 约 6 km","",[[-33.9093,151.2226],[-33.9050,151.2350],[-33.8975,151.2540],[-33.8925,151.2660],[-33.8908,151.2727]],null,"A"),
-  {v:"A",t:"14:30",p:"bondi",h:"邦迪海滩",d:"沙滩上躺一会儿、看冲浪，不用走长路。"},
-  L("walk","bondi","icebergs","约 8 分钟","沿海滩走到南端",[[-33.8908,151.2727],[-33.8928,151.2735],[-33.8948,151.2733]],null,"A"),
-  {v:"A",t:"15:30",p:"icebergs",h:"Bondi Icebergs 观景",d:"邦迪最经典的机位：海浪拍进海水泳池。想多走一点，可沿海岸步道到 Tamarama（约 1 km）再打车。"},
-  L("taxi","icebergs","home","约 25–30 分钟 · 约 9 km","",[[-33.8948,151.2733],[-33.8930,151.2600],[-33.8880,151.2400],[-33.8860,151.2200],[-33.8840,151.2050],[-33.8838,151.1952],[-33.8805,151.1938]],null,"A"),
-  L("lr","happypho","chinatown","约 20 分钟","L3 轻轨往市区方向，在 Chinatown / Haymarket 一带下车",[[-33.9093,151.2226],[-33.9000,151.2205],[-33.8920,151.2160],[-33.8870,151.2110],[-33.8835,151.2070],[-33.8805,151.2048],[-33.8788,151.2039]],null,"B"),
-  {v:"B",t:"14:30",p:"chinatown",h:"唐人街 + Darling Square",d:"慢慢逛，喝杯奶茶、吃甜品。"},
-  L("walk","chinatown","paddys","约 3 分钟","",[[-33.8788,151.2039],[-33.8803,151.2047]],null,"B"),
-  {v:"B",t:"15:30",p:"paddys",h:"Paddy's Markets",d:"买纪念品和零食，价格比景区便宜。"},
-  L("taxi","paddys","home","约 10 分钟 · 约 2 km","",[[-33.8803,151.2047],[-33.8822,151.2010],[-33.8838,151.1952],[-33.8805,151.1938]],"或沿 Broadway 坐公交","B"),
-  {t:"18:00",p:"home",h:"回家收拾行李",d:"晚饭在 Glebe Point Rd 附近随便吃。"}
+  {t:"05:15",p:"home",h:"出门（天还没亮）",d:"穿速干衣服，带一套换洗衣服、毛巾、帽子、防晒；手机放防水袋。"},
+  L("taxi","home","s_lavender","约 15 分钟 · 约 6 km","清早打车最快"),
+  {t:"05:45",p:"s_lavender",h:"日出皮划艇（约 2 小时）",d:"双人艇、小团，教练带着划。从 Lavender Bay 出发，在大桥边看日出。",tip:"集合时间以预订为准；日出约 5:40"},
+  L("kayak","s_lavender","s_kayak","约 2 小时（来回）","路线示意"),
+  {t:"约 06:30",p:"s_kayak",h:"海港大桥边看日出（示意位置）",d:"在水面上看大桥和歌剧院，教练会找好拍照的位置。"},
+  L("kayak","s_kayak","s_lavender","",""),
+  {t:"约 08:00",p:"s_lavender",h:"上岸，换衣服",d:"有的团含早餐或咖啡。"},
+  L("walk","s_lavender","milsonspt","约 10 分钟",""),
+  {t:"08:30",p:"milsonspt",h:"早餐：Milsons Point / Kirribilli 一带",d:"车站附近有不少咖啡馆。团里含早餐就跳过。"},
+  L("taxi","milsonspt","home","约 15 分钟 · 约 6 km",""),
+  {t:"09:30",p:"home",h:"回家休息、补觉",d:""},
+  L("taxi","home","bondi","约 25–30 分钟 · 约 9 km",""),
+  {t:"13:30",p:"bondi",h:"邦迪海滩",d:"沙滩上躺一会儿、看冲浪，不用走长路。"},
+  L("walk","bondi","icebergs","约 8 分钟","沿海滩走到南端"),
+  {t:"14:30",p:"icebergs",h:"Bondi Icebergs 观景",d:"邦迪最经典的机位：海浪拍进海水泳池。"},
+  L("walk","icebergs","s_bronte","约 40 分钟 · 约 2.5 km","Bondi to Bronte 海岸步道，有上下坡和台阶"),
+  {t:"15:30",p:"s_bronte",h:"海岸步道走到 Bronte",opt:1,d:"一路是悬崖和小海湾。走不动就在 Icebergs 直接打车回家。"},
+  L("taxi","s_bronte","home","约 25–30 分钟 · 约 9 km",""),
+  {t:"17:00",p:"home",h:"回家收拾行李",d:"明天退房、飞凯恩斯。晚饭在 Glebe Point Rd 附近随便吃。"}
  ]},
-{id:"day6",date:"11/29",wk:"周日",color:"#8A6E4B",title:"退房",
- sum:"轻松收尾。注意 Happy Pho 周日不开门，早午餐就在 Glebe Point Rd。",
+{id:"day6",date:"11/30",wk:"周一",color:"#8A6E4B",title:"退房，飞凯恩斯",
+ sum:"轻松收尾，按航班时间安排。时间够的话可以去悉尼大学看看、吃 Happy Pho（周一营业）；不够就在 Glebe Point Rd 吃早午餐。",
  chips:["退房时间以房东为准"],
  items:[
   {t:"09:00",p:"home",h:"收拾、退房",d:"行李可问房东能否暂存。"},
   L("walk","home","glebepointrd","约 10 分钟 · 700 m","",[[-33.8805,151.1938],[-33.8826,151.1918],[-33.8810,151.1895],[-33.8792,151.1878]]),
   {t:"09:30",p:"glebepointrd",h:"Glebe Point Rd 早午餐",d:"街上咖啡馆、早午餐店很多。"},
+  {t:"可选",p:"usyd",h:"悉尼大学主楼 Quadrangle",opt:1,extra:1,d:"离住处步行约 15 分钟，哥特式砂岩主楼和草坪。"},
+  {t:"可选",p:"happypho",h:"Happy Pho 越南粉（Kensington）",opt:1,extra:1,d:"从住处打车约 15 分钟。网上信息周一至周六营业，去之前再确认。"},
   L("walk","glebepointrd","home","约 10 分钟","",[[-33.8792,151.1878],[-33.8810,151.1895],[-33.8826,151.1918],[-33.8805,151.1938]]),
   {t:"11:00",p:"home",h:"取行李出发",d:""},
-  L("taxi","home","airport","约 20–30 分钟","按航班提前出发",[[-33.8805,151.1938],[-33.8840,151.1960],[-33.8950,151.1960],[-33.9150,151.1905]],"也可从 Central 坐机场线火车")
+  L("taxi","home","airport","约 20–30 分钟","按航班提前出发",[[-33.8805,151.1938],[-33.8840,151.1960],[-33.8950,151.1960],[-33.9150,151.1905]],"也可从 Central 坐机场线火车"),
+  {t:"按航班",p:"airport",h:"飞凯恩斯",d:"国内航班，悉尼机场 T2 / T3（看航空公司），一般提前 1 小时到。"}
  ]}
 ];

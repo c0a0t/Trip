@@ -12,3 +12,4 @@ screenshots/after-highlight-*.png
 screenshots/before-popup-*.png
 screenshots/after-popup-*.png
 build/cairns-geocode-raw.json
+build/more-geocode-raw.json

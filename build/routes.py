@@ -13,9 +13,9 @@ import osm
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GEO = {k: tuple(v["ll"]) for k, v in json.loads((ROOT / "geo.json").read_text(encoding="utf-8")).items()}
-SRC = (ROOT / "data.js").read_text(encoding="utf-8") + (ROOT / "cairns.js").read_text(encoding="utf-8")
+SRC = "".join((ROOT / f).read_text(encoding="utf-8") for f in ("data.js", "cairns.js", "adelaide.js", "melbourne.js"))
 LEGS = []
-for m in re.finditer(r'L\("(\w+)","(\w+)","(\w+)","([^"]*)"', SRC):
+for m in re.finditer(r'\b[LN]\("(\w+)","(\w+)","(\w+)","([^"]*)"', SRC):   # N(...) = 不给导航的段
     k = f"{m[1]}:{m[2]}>{m[3]}"
     if k not in [x[0] for x in LEGS]: LEGS.append((k, m[1], m[2], m[3], m[4]))
 
@@ -34,6 +34,7 @@ WALK_VIA = {
  "walk:rbg>hpb":          [(-33.86600, 151.21290)],                         # 出园走 Macquarie St
  "walk:rocks>obs":        [(-33.85920, 151.20720)],                         # Argyle St / Argyle Cut
  "walk:bondi>icebergs":   [(-33.89410, 151.27560)],                         # 沿海滩到南端
+ "walk:icebergs>s_bronte": [(-33.89690, 151.27660), (-33.90100, 151.27150)],  # Bondi to Bronte 海岸步道（Mackenzies Point → Tamarama）
 }
 CAR_VIA = {
  "coach:meet>bluemtn": [GEO["echopoint"]],   # 团车先到 Echo Point 再去 Scenic World
@@ -58,6 +59,11 @@ FERRY_MANUAL = {
 BOAT_MANUAL = {
  "boat:c_reeffleet>c_reef": [GEO["c_reeffleet"], (-16.9195, 145.7830), (-16.9120, 145.7885), (-16.9000, 145.7975), (-16.8800, 145.8150),
                              (-16.8550, 145.8450), (-16.8300, 145.8950), (-16.8300, 145.9600), (-16.8500, 146.0800), GEO["c_reef"]],
+}
+
+# 皮划艇：Lavender Bay → 湾口 → 大桥西侧水面（示意；同样过水面校验）
+KAYAK_MANUAL = {
+ "kayak:s_lavender>s_kayak": [GEO["s_lavender"], (-33.84470, 151.20770), (-33.84650, 151.20790), (-33.84850, 151.20800), GEO["s_kayak"]],
 }
 
 def simplify(pts, tol_m):
@@ -214,7 +220,7 @@ def build(key, mode, a, b, dur):
             info.update(kind="osrm-foot", dist=round(dist), names=names, coords=rnd(simplify(coords, 2.5)))
         else:
             info.update(kind="osrm-car", dist=round(dist), secs=round(secs), names=names[:40],
-                        coords=rnd(simplify(coords, 25 if mode == "coach" else 4)))
+                        coords=rnd(simplify(coords, (60 if dist > 50000 else 25) if mode == "coach" else (12 if dist > 15000 else 4))))
     elif mode == "boat":
         base = key if key in BOAT_MANUAL else f"boat:{b}>{a}"
         p = BOAT_MANUAL[base] if base == key else list(reversed(BOAT_MANUAL[base]))
@@ -222,6 +228,21 @@ def build(key, mode, a, b, dur):
         print(f"   水面校验：非水面区段 {runs or '无'}" + ("" if not runs else "  !!穿陆地"))
         info.update(kind="manual-waterway", dist=round(osm.length(p)), coords=rnd(p), water_check="ok" if not runs else runs,
                     note="出海航线为示意，去哪片礁以所报的团为准")
+    elif mode == "kayak":
+        base = key if key in KAYAK_MANUAL else f"kayak:{b}>{a}"
+        p = KAYAK_MANUAL[base] if base == key else list(reversed(KAYAK_MANUAL[base]))
+        runs = land_crossings(p, ignore_m=60)
+        print(f"   水面校验：非水面区段 {runs or '无'}" + ("" if not runs else "  !!穿陆地"))
+        info.update(kind="manual-waterway", dist=round(osm.length(p)), coords=rnd(p), water_check="ok" if not runs else runs,
+                    note="划艇路线为示意，以教练带的路线为准")
+    elif mode == "heli":
+        # 直升机：两点直线（示意），中间插点让线在地图上平滑
+        p = [(A[0] + (B[0] - A[0]) * t / 20, A[1] + (B[1] - A[1]) * t / 20) for t in range(21)]
+        info.update(kind="straight", dist=round(osm.length(p)), coords=rnd(p), note="直升机航线为示意")
+    elif mode == "steam":
+        # 普芬比利：OSM 里是 railway=narrow_gauge
+        p = rail_route('way["railway"="narrow_gauge"](-37.945,145.340,-37.900,145.475);', A, B, key)
+        info.update(kind="osm-rail", dist=round(osm.length(p)), coords=rnd([A, *simplify(p, 4), B]))
     elif mode == "cable":
         # OSM 里 Skyrail 是一整条 gondola 线（Smithfield → Kuranda，约 7.5 km），直接用它的几何
         ways = [e for e in osm.overpass('way["aerialway"="gondola"](-16.860,145.620,-16.810,145.710);out body geom;') if e.get("geometry")]
@@ -233,6 +254,12 @@ def build(key, mode, a, b, dur):
     elif mode == "train" and a.startswith("c_"):
         p = rail_route('way["railway"="rail"](-16.930,145.620,-16.810,145.780);', A, B, key)
         info.update(kind="osm-rail", dist=round(osm.length(p)), coords=rnd([A, *simplify(p, 4), B]))
+    elif mode == "train" and a.startswith("m_"):
+        # 墨尔本 Belgrave 线（Flinders Street → Belgrave）
+        # 从 Flinders Street 起算会吸附到 City Loop 的轨道、绕一圈；统一从 Belgrave 端起算（去程取反向）
+        q = 'way["railway"="rail"]["service"!~"."](-37.925,144.955,-37.805,145.365);'
+        p = list(reversed(rail_route(q, B, A, key))) if a == "m_flinders" else rail_route(q, A, B, key)
+        info.update(kind="osm-rail", dist=round(osm.length(p)), coords=rnd([A, *simplify(p, 6), B]))
     elif mode == "train":
         p = rail_route('way["railway"~"^(rail|subway)$"](-33.8760,151.2040,-33.8580,151.2160);', A, B, key)
         info.update(kind="osm-rail", dist=round(osm.length(p)), coords=rnd([A, *simplify(p, 3), B]))

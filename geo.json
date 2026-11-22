@@ -256,7 +256,7 @@
    -33.93378,
    151.17993
   ],
-  "src": "Nominatim: Sydney Airport T2 Domestic（国内航站楼，T3 就在旁边；29 日飞凯恩斯是国内航班）"
+  "src": "Nominatim: Sydney Airport T2 Domestic（国内航站楼，T3 就在旁边；30 日飞凯恩斯是国内航班）"
  },
  "c_airport": {
   "ll": [
@@ -300,13 +300,6 @@
   ],
   "src": "Nominatim: Cairns railway station, Bunda St"
  },
- "c_barron": {
-  "ll": [
-   -16.83644,
-   145.64298
-  ],
-  "src": "Nominatim: Barron Falls railway station"
- },
  "c_kuranda": {
   "ll": [
    -16.81848,
@@ -334,5 +327,215 @@
    145.69505
   ],
   "src": "Nominatim: Skyrail Smithfield Terminal (aerialway/station)"
+ },
+ "c_rainf": {
+  "ll": [
+   -16.82368,
+   145.65206
+  ],
+  "src": "Nominatim: Rainforestation Nature Park, Kennedy Hwy (tourism/zoo)"
+ },
+ "c_heli": {
+  "ll": [
+   -16.87172,
+   145.7376
+  ],
+  "src": "示意：Nautilus Aviation（Greenbank West Rd，凯恩斯机场西侧，Nominatim）；直升机实际降落点以商家为准"
+ },
+ "c_marina": {
+  "ll": [
+   -16.9214,
+   145.78131
+  ],
+  "src": "Nominatim: Marlin Marina（很多钓鱼船从这里出发；集合点待定）"
+ },
+ "c_rustys": {
+  "ll": [
+   -16.92444,
+   145.77508
+  ],
+  "src": "Nominatim: Rusty's Markets, 57-89 Grafton St"
+ },
+ "c_botanic": {
+  "ll": [
+   -16.9001,
+   145.75043
+  ],
+  "src": "Nominatim: Cairns Botanic Gardens, Collins Ave"
+ },
+ "s_dfo": {
+  "ll": [
+   -33.85536,
+   151.07675
+  ],
+  "src": "Nominatim: DFO Homebush, 3-5 Underwood Rd (shop/mall)"
+ },
+ "s_mill": {
+  "ll": [
+   -33.9106,
+   151.19378
+  ],
+  "src": "Nominatim: 41-43 Bourke Rd, Alexandria（The Mill 里的店铺）"
+ },
+ "s_lavender": {
+  "ll": [
+   -33.84397,
+   151.20713
+  ],
+  "src": "Nominatim: Railway Ave, Lavender Bay（皮划艇常见集合点 1 Railway Ave 一带）"
+ },
+ "s_kayak": {
+  "ll": [
+   -33.85,
+   151.2085
+  ],
+  "src": "示意：Lavender Bay 湾口外、海港大桥西侧水面（划艇路线示意）"
+ },
+ "s_bronte": {
+  "ll": [
+   -33.90362,
+   151.26829
+  ],
+  "src": "Nominatim: Bronte Beach (natural/beach)"
+ },
+ "a_airport": {
+  "ll": [
+   -34.93894,
+   138.5375
+  ],
+  "src": "Nominatim/Overpass: Adelaide Airport Domestic & International Terminal"
+ },
+ "a_home": {
+  "ll": [
+   -34.92895,
+   138.59992
+  ],
+  "src": "示意位置：住处待定，先放在市中心 Victoria Square（Nominatim）"
+ },
+ "a_central": {
+  "ll": [
+   -34.93009,
+   138.59805
+  ],
+  "src": "Nominatim: Central Market Arcade"
+ },
+ "a_farmers": {
+  "ll": [
+   -34.94596,
+   138.58653
+  ],
+  "src": "Nominatim: Adelaide Showground, Wayville（Farmers' Market 所在）"
+ },
+ "a_rundle": {
+  "ll": [
+   -34.92284,
+   138.6026
+  ],
+  "src": "Nominatim: Rundle Mall (pedestrian)"
+ },
+ "a_gallery": {
+  "ll": [
+   -34.92063,
+   138.60397
+  ],
+  "src": "Nominatim: Art Gallery of South Australia（South Australian Museum 在旁边）"
+ },
+ "a_botanic": {
+  "ll": [
+   -34.91823,
+   138.61146
+  ],
+  "src": "Nominatim: Adelaide Botanic Gardens"
+ },
+ "a_river": {
+  "ll": [
+   -34.91958,
+   138.59779
+  ],
+  "src": "Nominatim: Adelaide Festival Centre（托伦斯河南岸）"
+ },
+ "a_penfolds": {
+  "ll": [
+   -34.92158,
+   138.67926
+  ],
+  "src": "Nominatim: Penfolds Magill Estate, 78 Penfold Rd"
+ },
+ "m_airport": {
+  "ll": [
+   -37.67065,
+   144.8503
+  ],
+  "src": "Nominatim: Melbourne Airport Terminal 1/2/3 Drop off"
+ },
+ "m_home": {
+  "ll": [
+   -37.81492,
+   144.96685
+  ],
+  "src": "示意位置：住处待定，先放在市中心 Melbourne Town Hall（Nominatim）"
+ },
+ "m_meet": {
+  "ll": [
+   -37.81774,
+   144.96916
+  ],
+  "src": "Nominatim: Federation Square（大洋路团集合点示例）"
+ },
+ "m_arch": {
+  "ll": [
+   -38.47204,
+   144.04458
+  ],
+  "src": "Nominatim: Great Ocean Road Memorial Arch"
+ },
+ "m_apollo": {
+  "ll": [
+   -38.75474,
+   143.66915
+  ],
+  "src": "Nominatim: Apollo Bay（镇中心）"
+ },
+ "m_12a": {
+  "ll": [
+   -38.66428,
+   143.1038
+  ],
+  "src": "Nominatim: The Twelve Apostles (tourism/viewpoint)"
+ },
+ "m_lochard": {
+  "ll": [
+   -38.64641,
+   143.07033
+  ],
+  "src": "Nominatim: Loch Ard Gorge (natural/beach)"
+ },
+ "m_flinders": {
+  "ll": [
+   -37.81842,
+   144.96648
+  ],
+  "src": "Nominatim: Flinders Street railway station"
+ },
+ "m_belgrave": {
+  "ll": [
+   -37.90901,
+   145.35525
+  ],
+  "src": "Nominatim: Belgrave railway station (Metro)"
+ },
+ "m_pbbel": {
+  "ll": [
+   -37.90768,
+   145.35657
+  ],
+  "src": "Nominatim: Belgrave (Narrow-gauge) — Puffing Billy"
+ },
+ "m_lakeside": {
+  "ll": [
+   -37.9304,
+   145.45965
+  ],
+  "src": "Nominatim: Lakeside railway station, Emerald (Puffing Billy)"
  }
 }

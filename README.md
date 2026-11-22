@@ -1,6 +1,6 @@
-# 悉尼 11.24–11.29 行程地图
+# 澳洲 11.24–12.10 行程地图（悉尼 → 凯恩斯 → 阿德莱德 → 墨尔本）
 
-静态网页：`index.html` + `app.js` + `app.css` + `data.js`（悉尼行程数据，原样摘自 `../itinerary-source.html`）+ `cairns.js`（凯恩斯 11/29–12/2，按常见一日团补全，时间以团为准；住处待定）+ `geo.json`（核准坐标）+ `routes.json`（构建期算好的真实路线）。
+静态网页：`index.html` + `app.js` + `app.css` + `data.js`（悉尼 11/24–11/30，最初摘自 `../itinerary-source.html`，2026-11-22 按新安排调整）+ `cairns.js`（凯恩斯 11/30–12/5）+ `adelaide.js`（阿德莱德 12/5–12/8）+ `melbourne.js`（墨尔本 12/8–12/10）+ `geo.json`（核准坐标）+ `routes.json`（构建期算好的真实路线）。
 底图是 Leaflet + OpenStreetMap 标准瓦片；页面运行时不调用任何路线服务。
 
 ## 重新构建（只在改了地点或路段时需要）

@@ -1,5 +1,5 @@
-/* 悉尼行程地图：Leaflet + OSM 瓦片；路线来自构建期生成的 routes.json，坐标来自 geo.json。
-   行程数据（P / DAYS / MODES / GMODE）在 data.js，原样摘自 itinerary-source.html。 */
+/* 澳洲行程地图（悉尼 → 凯恩斯 → 阿德莱德 → 墨尔本）：Leaflet + OSM 瓦片；路线来自构建期生成的 routes.json，坐标来自 geo.json。
+   行程数据（P / DAYS / MODES / GMODE）：悉尼在 data.js，其他城市在 cairns.js / adelaide.js / melbourne.js。 */
 (async function(){
 "use strict";
 const L=window.L; // data.js 里的路段构造函数也叫 L（全局 const），这里取回 Leaflet
@@ -13,10 +13,15 @@ try{
 // 核准坐标覆盖 data.js 里的近似坐标；蓝山/机场现在是真实位置，不再是图边箭头
 for(const k in GEO){ if(P[k]) P[k].ll=GEO[k].ll; }
 P.echopoint={n:"Echo Point 三姐妹峰",ll:(GEO.echopoint||{ll:[-33.73224,150.31217]}).ll,q:"Echo Point Lookout, Katoomba NSW",sub:"bluemtn"};
-const NO_NAV=new Set(["bluemtn","c_barron","c_kuranda"]);  // 跟团大巴段、Kuranda 观光火车不给导航（Google 查不到）；出海船/缆车没有 GMODE，也不给
-const hasNav=it=>!!GMODE[it.mode]&&!NO_NAV.has(it.to);
-// 城市：悉尼（data.js）和凯恩斯（cairns.js，d.city="cairns"）。地图可拖动范围随当天所在城市切换
-const CITY={syd:{bounds:[[-34.25,149.95],[-33.45,151.55]]},cairns:{bounds:[[-17.35,145.35],[-16.40,146.45]]}};
+const NO_NAV=new Set(["bluemtn"]);  // 去蓝山的团车段不给导航；其他跟团 / 观光线路在数据里用 N(...) 标 nonav；出海船、缆车、直升机、划艇、蒸汽火车没有 GMODE，也不给
+const hasNav=it=>!!GMODE[it.mode]&&!it.nonav&&!NO_NAV.has(it.to);
+// 城市：悉尼（data.js，没有 d.city）、凯恩斯 / 阿德莱德 / 墨尔本（d.city）。地图可拖动范围、最小缩放随当天所在城市切换
+const CITY={
+  syd:{n:"悉尼",bounds:[[-34.25,149.95],[-33.45,151.55]]},
+  cairns:{n:"凯恩斯",bounds:[[-17.35,145.35],[-16.40,146.45]]},
+  adl:{n:"阿德莱德",bounds:[[-35.15,138.35],[-34.75,138.85]]},
+  mel:{n:"墨尔本",bounds:[[-39.05,142.70],[-37.45,145.75]],minZoom:7}   // 大洋路一日游跨约 200 km
+};
 const cityOf=d=>(d&&d.city)||"syd";
 const SYD_DAYS=DAYS.filter(d=>!d.city);
 delete P.bluemtn.edge; delete P.airport.edge;
@@ -105,7 +110,8 @@ mapwrap.addEventListener("touchmove",e=>{if(e.cancelable)e.preventDefault()},{pa
 mapwrap.addEventListener("touchstart",e=>{if(e.touches.length>1&&e.cancelable)e.preventDefault()},{passive:false});
 
 // 地图上的线型（比 data.js 里的 MODES 更粗；虚线间距按粗细放大）。图例用同一套
-const LINE={walk:{w:6,dash:"0.1 11"},taxi:{w:5.5,dash:"12 9"},coach:{w:5.5,dash:"14 9"},bus:{w:6},lr:{w:6},train:{w:6},ferry:{w:6},boat:{w:6},cable:{w:5,dash:"18 7"}};
+const LINE={walk:{w:6,dash:"0.1 11"},taxi:{w:5.5,dash:"12 9"},coach:{w:5.5,dash:"14 9"},bus:{w:6},lr:{w:6},train:{w:6},ferry:{w:6},boat:{w:6},cable:{w:5,dash:"18 7"},
+  kayak:{w:5,dash:"6 7"},heli:{w:4.5,dash:"2 10"},steam:{w:6}};
 const lineStyle=mode=>({w:(LINE[mode]||{}).w||6,dash:(LINE[mode]||{}).dash||null});
 const BASE={halo:.2,casing:.95};
 function legOpacity(x,on){ // on: true 高亮 / false 压暗 / undefined 恢复
@@ -285,7 +291,7 @@ let curCity="syd";
 function switchCity(){
   const c=cityOf(state.day&&dayById(state.day));
   if(c===curCity)return false;
-  curCity=c;map.setMaxBounds(null);fitDay(true);map.setMaxBounds(CITY[c].bounds);
+  curCity=c;map.setMaxBounds(null);map.setMinZoom(CITY[c].minZoom||9);fitDay(true);map.setMaxBounds(CITY[c].bounds);
   return true;
 }
 /* ---------- 手机：地图和行程之间的拖动条，上下拖调地图高度；轻点在默认/大半屏之间切换 ---------- */
@@ -343,7 +349,7 @@ function gmSegments(d){
   legsOf(d).forEach(lg=>{
     if(lg.from===lg.to)return;
     // 出海船、缆车、Kuranda 观光火车 Google 给不出路线：跳过，并且前后的步行不连成一段
-    if(!GMODE[lg.mode]||(lg.mode==="train"&&NO_NAV.has(lg.to))){cur=null;return}
+    if(!GMODE[lg.mode]||lg.nonav||(lg.mode==="train"&&NO_NAV.has(lg.to))){cur=null;return}
     if(lg.mode==="walk"){
       // 手机浏览器的 Google 地图链接每段最多 3 个中途点（= 5 个点）
       if(cur&&cur.mode==="walk"&&cur.stops[cur.stops.length-1]===lg.from&&cur.stops.length<5&&!(P[lg.from].home&&cur.stops.length>1)){cur.stops.push(lg.to)}
@@ -377,7 +383,7 @@ function renderTabs(){
     b.innerHTML=(color?`<span class="dot" style="background:${color}"></span>`:"")+label;b.onclick=()=>go(id);tabs.appendChild(b)};
   mk(null,"总览");mk("cal","日历");
   DAYS.forEach((d,i)=>{
-    if(d.city&&(!i||DAYS[i-1].city!==d.city)){const s=document.createElement("span");s.className="tabsep";s.textContent="凯恩斯";tabs.appendChild(s)}
+    if(i&&cityOf(DAYS[i-1])!==cityOf(d)){const s=document.createElement("span");s.className="tabsep";s.textContent=cityName(d);tabs.appendChild(s)}
     mk(d.id,d.tab||`${d.date} ${d.wk}`,d.color)});
   const on=tabs.querySelector(".on");if(on)tabs.scrollLeft=on.offsetLeft-tabs.clientWidth/2+on.offsetWidth/2;
 }
@@ -396,12 +402,12 @@ function go(id,push=true,keepView=false){
   if(push){try{history.replaceState(null,"",cal?"#calendar":id?"#"+id:"#overview")}catch(e){}}
   content.scrollTop=0;if(isNarrow())window.scrollTo({top:0});
 }
-const cityName=d=>d.city?"凯恩斯":"悉尼";
-const navLbl=(x,cur)=>cityOf(x)!==cityOf(cur)?`${cityName(x)} ${x.date}`:x.date; // 跨城市时带上城市名（两个 11/29）
+const cityName=d=>CITY[cityOf(d)].n;
+const navLbl=(x,cur)=>cityOf(x)!==cityOf(cur)?`${cityName(x)} ${x.date}`:x.date; // 跨城市时带上城市名（换城市那天有两页同一日期）
 function renderContent(){
   if(!state.day){if(state.view==="cal")renderCalendar();else renderOverview();return}
   const d=dayById(state.day);const num=numbering(d);
-  let h=`<div class="dayhead"><div class="kicker"><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${d.color}"></span>${d.city?"凯恩斯 · ":""}${d.date} ${d.wk}</div><h2>${d.title}</h2><div style="color:#3b3f45">${d.sum}</div><div class="chips">${d.chips.map(c=>`<span class="chip">${c}</span>`).join("")}</div></div>`;
+  let h=`<div class="dayhead"><div class="kicker"><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${d.color}"></span>${d.city?cityName(d)+" · ":""}${d.date} ${d.wk}</div><h2>${d.title}</h2><div style="color:#3b3f45">${d.sum}</div><div class="chips">${d.chips.map(c=>`<span class="chip">${c}</span>`).join("")}</div></div>`;
   if(d.variants){h+=`<div class="seg" role="tablist" aria-label="${d.variants.label}">${d.variants.opts.map(o=>`<button data-v="${o[0]}" class="${state.variant[d.id]===o[0]?"on":""}">${o[1]}</button>`).join("")}</div>`}
   h+=gmBlock(d);
   if(loadErr)h+=`<div class="warn">真实路线数据没加载到（${loadErr.message}），地图上暂时显示近似折线。</div>`;
@@ -470,23 +476,30 @@ function selectStop(dayId,p,fromMap,idx){
   }else panKeep(P[p].ll); // 在行程里点的：地图平移过去，缩放不变
 }
 function renderOverview(){
-  let h=`<div class="note blue" style="margin-top:0">总体思路：<b>住在 Glebe，离市中心 3–5 km</b>。进城最省事是打车（约 15–20 分钟），公交 431/433 路沿 Glebe Point Rd 进城也很方便。城里景点之间 1 km 内步行，远一点用火车/轻轨/渡轮，回家累了直接打车。</div>`;
+  const span=c=>{const ds=DAYS.filter(x=>cityOf(x)===c);return `${ds[0].date}–${ds[ds.length-1].date}`};
+  let h=`<div class="note" style="margin-top:0"><b>全程</b>：${Object.keys(CITY).map(c=>`${CITY[c].n} ${span(c)}`).join(" → ")}。地图在总览里只画悉尼，其他城市点日期看。</div>`;
+  h+=`<div class="note blue">悉尼总体思路：<b>住在 Glebe，离市中心 3–5 km</b>。进城最省事是打车（约 15–20 分钟），公交 431/433 路沿 Glebe Point Rd 进城也很方便。城里景点之间 1 km 内步行，远一点用火车/轻轨/渡轮，回家累了直接打车。</div>`;
   if(loadErr)h+=`<div class="warn">真实路线数据没加载到（${loadErr.message}），地图上暂时显示近似折线。</div>`;
-  DAYS.forEach((d,i)=>h+=(d.city&&!DAYS[i-1].city?`<h3 class="cityhd">凯恩斯 · ${d.date}–${DAYS[DAYS.length-1].date}</h3>`:"")+`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
-  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图（国内网络加载不出来时，会自动换成 Esri 街道图），地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨按 OSM 里的线路画，动物园园内路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 25 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。<b>在国内网络、或用国内手机卡漫游时</b> Google 地图打不开：苹果手机点地点和路段旁边的“苹果地图”，安卓 / 华为手机点“本机地图”（用手机自带的地图打开目的地）。</div>`;
+  DAYS.forEach((d,i)=>h+=(i&&cityOf(DAYS[i-1])!==cityOf(d)?`<h3 class="cityhd">${cityName(d)} · ${span(cityOf(d))}</h3>`:"")+`<div class="daycard" data-go="${d.id}"><div class="bar" style="background:${d.color}"></div><div><div class="d">${d.date} ${d.wk}</div><h4>${d.title}</h4><p>${d.sum}</p></div></div>`);
+  h+=`<div class="note green"><b>关于地图</b>：底图是 OpenStreetMap 街道地图（国内网络加载不出来时，会自动换成 Esri 街道图），地图上的步行和打车路线是按真实街道算好的（步行可能和现场实际走法略有出入）；渡轮、火车、轻轨、缆车、普芬比利小火车按 OSM 里的线路画；动物园园内、皮划艇、出海船、直升机的路线是示意。<b>步行时间</b>按不赶路的中年人步速（约 4 km/h，已含过马路等红灯）和实际路线长度算，上坡多算 25%；景点之间的停留时间没有变，个别段会比较紧（比如 26 日过大桥那段）。要实时公交班次和导航，点每天页面顶部的“在 Google 地图看真实路线”，或每段旁边的“导航”。<b>在国内网络、或用国内手机卡漫游时</b> Google 地图打不开：苹果手机点地点和路段旁边的“苹果地图”，安卓 / 华为手机点“本机地图”（用手机自带的地图打开目的地）。</div>`;
   h+=`<div class="sec"><h3>出发前要订的</h3><ul>
-  <li><b>歌剧院普通话导览</b>（25 日上午）：官网选 “Mandarin Tour”，约 1 小时，只用中文讲解。有“导览 + 用餐”套餐可选（餐点需在当天 18:00 前兑换）。</li>
-  <li><b>海德公园军营博物馆</b>（25 日）：免费，官网预约时段。</li>
-  <li><b>塔龙加动物园</b>（26 日）：跟团就订团；自己去就在官网买门票（在线比门口便宜），渡轮刷卡即可，或买“渡轮 + 门票”套票。</li>
-  <li><b>蓝山一日团</b>（27 日）：确认含 Scenic World 三种缆车、少徒步、中文导游、集合点在市中心。</li>
+  <li><b>住处和机票</b>：悉尼加住 11/29 晚、11/30 退房；悉尼 → 凯恩斯 11/30；凯恩斯住 11/30–12/5（5 晚）；凯恩斯 → 阿德莱德 12/5；阿德莱德住 12/5–12/8（要有厨房）；阿德莱德 → 墨尔本 12/8；墨尔本住处。</li>
+  <li><b>歌剧院普通话导览</b>（26 日上午）：官网选 “Mandarin Tour”，约 1 小时，只用中文讲解。有“导览 + 用餐”套餐可选（餐点需在当天 18:00 前兑换）。原来订了 25 日的要改期。</li>
+  <li><b>海德公园军营博物馆</b>（26 日）：免费，官网预约时段。</li>
+  <li><b>塔龙加动物园</b>（27 日）：跟团就订团；自己去就在官网买门票（在线比门口便宜），渡轮刷卡即可，或买“渡轮 + 门票”套票。</li>
+  <li><b>蓝山一日团</b>（28 日，周六）：确认含 Scenic World 三种缆车、少徒步、中文导游、集合点在市中心。原来订了 27 日的要改期。</li>
+  <li><b>日出皮划艇</b>（29 日）：Lavender Bay 出发，提前预约，问清天气取消怎么处理。</li>
+  <li><b>凯恩斯</b>：大堡礁 Reef Magic（12/1，飞猪，下单后出发前 9 天内取消不退）、库兰达一日游（12/2，飞猪，11/27 前取消不扣钱）、海钓（12/3，待定）。</li>
+  <li><b>阿德莱德</b>：奔富 Magill Estate 导览 / 品酒（12/7）要在官网预约。</li>
+  <li><b>墨尔本</b>：大洋路一日团（12/9）、普芬比利火车票（12/10，官网）。</li>
   </ul></div>`;
   h+=`<div class="sec"><h3>需要提前知道的</h3><ul>
   <li><b>交通刷卡</b>：火车、轻轨、公交、渡轮都可以直接用银行卡/手机钱包（Visa、Mastercard 等）刷，上车和下车都要刷，同一张卡不要混用。</li>
-  <li><b>蓝花楹</b>：悉尼一般 10 月中开到 11 月下旬，你们去的时候是尾声。25 日在 Kirribilli、28 日在悉尼大学都顺路，不用专门跑。</li>
+  <li><b>蓝花楹</b>：悉尼一般 10 月中开到 11 月下旬，你们去的时候是尾声。26 日在 Kirribilli 顺路，不用专门跑。</li>
   <li><b>动物园缆车</b>：Sky Safari 已停运（新缆车预计 2027 年底），从码头上山靠 238 路公交。</li>
-  <li><b>Happy Pho</b> 在 Kensington（UNSW 旁），网上信息显示周日休息，所以排在 28 日（周六）。</li>
+  <li><b>Happy Pho</b> 在 Kensington（UNSW 旁），网上信息显示周日休息；30 日（周一）退房前时间够可以去。</li>
+  <li><b>退税（TRS）</b>：同一家店一次买满 A$300（含税）、有 tax invoice，离开澳洲时在国际机场出发区办，能退约 9% 的商品税。</li>
   <li><b>日落</b>：11 月下旬约 19:40，看歌剧院亮灯可以待到 20:15 左右。</li>
-  <li><b>没排进去的</b>：Kiama（南边海边小镇，看喷水洞）从 Central 坐火车单程要 2 小时以上，当天往返会很累；如果 28 日想换成海边一日游，可以用它替换休闲日。</li>
   </ul></div>`;
   h+=`<div class="sec"><h3>来源（出发前请再核对一次营业时间）</h3><ul class="src">
   <li><a href="https://www.sydneyoperahouse.com/tours/sydney-opera-house-tour" target="_blank" rel="noopener">Sydney Opera House – Tours（含普通话导览、步行与台阶说明）</a></li>
@@ -495,11 +508,18 @@ function renderOverview(){
   <li><a href="https://taronga.org.au/sydney-zoo/must-see/sky-safari" target="_blank" rel="noopener">Taronga – Sky Safari 停运与 238 路公交</a></li>
   <li><a href="https://www.taronga.org.au/sydney-zoo/plan/visitor-information/ticket-prices/" target="_blank" rel="noopener">Taronga – 门票价格</a></li>
   <li><a href="https://mhnsw.au/visit-us/hyde-park-barracks/plan-your-visit/" target="_blank" rel="noopener">Museums of History NSW – Hyde Park Barracks 开放时间</a></li>
-  <li><a href="https://whatson.cityofsydney.nsw.gov.au/events/glebe-markets" target="_blank" rel="noopener">City of Sydney – Glebe Markets（周六 10:00–16:00）</a></li>
   <li><a href="https://www.northsydney.nsw.gov.au/news/article/250/reopening-mcdougall-street" target="_blank" rel="noopener">North Sydney Council – McDougall St 蓝花楹季</a></li>
   <li><a href="https://www.sydneycoastwalks.com.au/?p=15453" target="_blank" rel="noopener">Sydney Coast Walks – 海港大桥步行入口</a></li>
   <li><a href="https://www.onlinedining.com.au/venue/happy-pho" target="_blank" rel="noopener">Online Dining – Happy Pho 地址与营业时间</a></li>
-  </ul><p class="src">地图数据 © OpenStreetMap contributors；步行/打车路线由 FOSSGIS 的 OSRM 服务在制作页面时算好存进页面，打开页面时不再依赖路线服务。地点坐标用 Nominatim 核对过。</p></div>`;
+  <li><a href="https://www.homebush.dfo.com.au/shopping" target="_blank" rel="noopener">DFO Homebush – 店铺列表与营业时间</a></li>
+  <li><a href="https://jobs.workable.com/jobs/cdf948f3-2b3e-49db-9f6c-44541f148e84.md" target="_blank" rel="noopener">Arc'teryx 招聘信息 – The Mill (Alexandria) 悉尼首家折扣店</a></li>
+  <li><a href="https://www.sydney.com/things-to-do/tours/sydney-kayak-tours/sunrise-double-kayak-tour-sydney-harbour" target="_blank" rel="noopener">Sydney.com – Sunrise Double Kayak Tour（Lavender Bay）</a></li>
+  <li><a href="https://cart.reefmagic.com.au/activity/groups" target="_blank" rel="noopener">Reef Magic 官网订票（12/1 9:00 开船）</a></li>
+  <li><a href="https://skyrail.com.au/plan/skyrail-kuranda-train/" target="_blank" rel="noopener">Skyrail – 缆车 + 库兰达火车价格和时刻表</a></li>
+  <li><a href="https://adelaidecentralmarket.com.au/faqs/" target="_blank" rel="noopener">Adelaide Central Market – 营业时间（周日、周一不开）</a></li>
+  <li><a href="https://australiantraveller.com/sa/adelaide/adelaide-markets" target="_blank" rel="noopener">Australian Traveller – 阿德莱德的市场（Farmers' Market 周日上午）</a></li>
+  <li><a href="https://penfolds.com/visit/magill-estate-cellar-door.html" target="_blank" rel="noopener">Penfolds – Magill Estate Cellar Door</a></li>
+  </ul><p class="src">地图数据 © OpenStreetMap contributors；步行/打车路线由 FOSSGIS 的 OSRM 服务在制作页面时算好存进页面，打开页面时不再依赖路线服务。地点坐标用 Nominatim 核对过；各城市的“家”在住处订好前是放在市中心的示意位置。</p></div>`;
   content.innerHTML=h;
   content.querySelectorAll("[data-go]").forEach(c=>c.onclick=()=>go(c.dataset.go));
 }
@@ -509,15 +529,25 @@ const YEAR=2026; // data.js 里只有月/日；11/24 是周二 → 2026 年
 // 每天的简称和简表：时间从行程里取（跟着方案切换走），这里只写短名字。[地点, 短名, 指定时间(同一地点出现多次时)]
 const CAL={
   day1:{tag:["落地","夜景"],keys:[["home","抵达住处","12:00"],["fish","鱼市场午饭"],["dh","达令港 → 海滨步道"],["soh","歌剧院夜景"]]},
+  shop:{tag:["奥莱","始祖鸟"],keys:[["s_dfo","DFO 奥特莱斯"],["s_mill","始祖鸟折扣店"],["broadway","Broadway 晚饭"]]},
   day2:{tag:["歌剧院","大桥"],keys:[["soh","歌剧院中文导览"],["rbg","皇家植物园"],["hpb","军营博物馆"],["bstairs","走海港大桥"],["mpwharf","坐渡轮回"]]},
   day3:{tag:["动物园"],keys:[["cq","码头坐船"],["zootop","正门入园，往下逛"],["zoowharf","出园坐船回","16:15"]]},
   day4:{tag:["蓝山","一日团"],keys:[["meet","集合出发"],["bluemtn","三姐妹峰 + 三种缆车"],["chinatown","唐人街晚饭"]]},
-  day5:{tag:["市集","休闲"],keys:[["glebemkt","Glebe 周六市集"],["usyd","悉尼大学"],["happypho","Happy Pho 午饭"],["bondi","Bondi 看海"],["chinatown","唐人街慢慢逛"]]},
+  kayak:{tag:["皮划艇","Bondi"],keys:[["s_lavender","日出皮划艇","05:45"],["bondi","Bondi 看海"],["s_bronte","海岸步道到 Bronte（可选）"]]},
   day6:{tag:["退房","凯恩斯"],keys:[["home","收拾、退房","09:00"],["glebepointrd","早午餐"],["home","取行李去机场","11:00"]]},
   cns1:{noCell:1,keys:[["c_airport","抵达凯恩斯机场"],["c_home","入住"],["c_lagoon","海滨 + 夜市（可选）"]]},
-  cns2:{tag:["大堡礁"],keys:[["c_reeffleet","Reef Fleet 码头上船","07:30"],["c_reef","大堡礁浮潜 / 玻璃底船"],["c_reeffleet","回到码头","约 17:00"]]},
-  cns3:{tag:["雨林","小火车"],keys:[["c_cnsstn","观光火车上山"],["c_kvillage","Kuranda 雨林小镇"],["c_skyk","Skyrail 缆车下山"],["c_home","回住处","约 17:00"]]},
-  cns4:{tag:["返程","去阿德"],keys:[["c_home","收拾、退房"],["c_airport","飞阿德莱德"]]}
+  cns2:{tag:["大堡礁"],keys:[["c_reeffleet","Reef Fleet 码头报到"],["c_reef","浮潜 / 玻璃底船 / 午餐"],["c_heli","直升机飞回"]]},
+  cns3:{tag:["库兰达","缆车火车"],keys:[["c_skys","缆车上山"],["c_rainf","雨林公园"],["c_kuranda","火车下山"],["c_home","回住处","约 17:45"]]},
+  cnsfish:{tag:["海钓"],keys:[["c_marina","海钓（全天 / 半天待定）"]]},
+  cnsrest:{tag:["休整"],keys:[["c_rustys","Rusty's 市场（可选）"],["c_botanic","植物园（可选）"],["c_lagoon","海滨泳池（可选）"]]},
+  cns4:{tag:["退房","阿德莱德"],keys:[["c_home","收拾、退房"],["c_airport","飞阿德莱德"]]},
+  adl1:{noCell:1,keys:[["a_airport","抵达阿德莱德"],["a_home","入住"],["a_central","中央市场（可选）"]]},
+  adl2:{tag:["市集","做饭"],keys:[["a_farmers","Farmers' Market 买菜"],["a_rundle","逛市区"],["a_home","在家做饭","17:30"]]},
+  adl3:{tag:["奔富","酒庄"],keys:[["a_penfolds","奔富 Magill Estate"]]},
+  adl4:{tag:["退房","墨尔本"],keys:[["a_home","收拾、退房"],["a_airport","飞墨尔本"]]},
+  mel1:{noCell:1,keys:[["m_airport","抵达墨尔本"],["m_home","入住"]]},
+  mel2:{tag:["大洋路","十二门徒"],keys:[["m_meet","集合出发","07:00"],["m_arch","纪念拱门"],["m_12a","十二门徒"],["m_meet","回到市区","约 20:00"]]},
+  mel3:{tag:["蒸汽","小火车"],keys:[["m_flinders","坐火车去 Belgrave","09:00"],["m_pbbel","普芬比利上车","约 10:30"],["m_lakeside","Lakeside 午饭"]]}
 };
 function calItems(d){
   const vis=visibleItems(d);
@@ -551,7 +581,7 @@ function renderCalendar(){
     if(d)h+=`<button class="c trip${td}" data-go="${d.id}" data-iso="${iso}" style="background:${d.color}1A;border-top-color:${d.color}" aria-label="${cityName(d)} ${d.date} ${d.wk} ${tagOf(d)}"><span class="n">${num}</span><span class="tag">${CAL[d.id].tag.map(t=>`<span>${t}</span>`).join("")}</span></button>`;
     else h+=`<div class="c${td}" data-iso="${iso}"><span class="n">${num}</span></div>`;
   }
-  h+=`</div><div class="calnote">点日期看当天的地图和详细行程。11/29 白天在悉尼退房，当天飞到凯恩斯。</div></div>`;
+  h+=`</div><div class="calnote">点日期看当天的地图和详细行程。11/30、12/5、12/8 是换城市的日子：格子里是出发城市那一页，到达城市那一页在日期栏里。</div></div>`;
   h+=`<div class="agenda">`;
   DAYS.forEach((d,i)=>{const td=isoOf(d)===today;
     if(!i||cityOf(DAYS[i-1])!==cityOf(d)){const ds=DAYS.filter(x=>cityOf(x)===cityOf(d));h+=`<h3 class="city">${cityName(d)} · ${ds[0].date}–${ds[ds.length-1].date}</h3>`}
@@ -568,7 +598,7 @@ function icsText(){
   const ymd=(d,plus)=>isoAdd(isoOf(d),plus||0).replace(/-/g,"");
   const base=location.href.split("#")[0];
   const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
-  const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:悉尼 · 凯恩斯行程"];
+  const out=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//sydney-trip-map//CN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:澳洲行程 11/24–12/10"];
   DAYS.forEach(d=>{
     const desc=calItems(d).map(x=>`${x.t} ${x.lab}`).join("\n")+`\n\n${d.title}\n${base}#${d.id}`;
     out.push("BEGIN:VEVENT",`UID:${d.id}-${YEAR}@sydney-trip-map`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${ymd(d)}`,`DTEND;VALUE=DATE:${ymd(d,1)}`,
